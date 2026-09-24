@@ -334,6 +334,7 @@ struct DetailsView: View {
         -heroScrollMinY > HeroArtworkScrollEffect.compactHeaderRevealDistance
     }
 
+    @ViewBuilder
     private var detailChromeOverlay: some View {
         let topInset = max(ScreenMetrics.topSafeAreaInset, 47)
         VStack(spacing: 0) {
@@ -757,7 +758,7 @@ enum HeroArtworkScrollEffect {
 }
 
 private struct DetailsHeroScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
     }
