@@ -527,23 +527,23 @@ final class AppEnvironment: ObservableObject {
         return UIImage(cgImage: image)
     }
 
-    func tmdbLogoData(for title: TrendingTitle) async throws -> Data? {
+    func tmdbLogoData(for title: TrendingTitle, language: String? = nil) async throws -> Data? {
         let token = try tmdbAccessToken()
-        let language = Locale.preferredLanguages.first ?? "en-US"
+        let resolvedLanguage = language ?? Locale.preferredLanguages.first ?? "en-US"
         return try await tmdbClient.logoData(
             for: title,
             accessToken: token,
-            language: language
+            language: resolvedLanguage
         )
     }
 
-    func tmdbLogoData(for item: MediaItem) async throws -> Data? {
+    func tmdbLogoData(for item: MediaItem, language: String? = nil) async throws -> Data? {
         let token = try tmdbAccessToken()
-        let language = Locale.preferredLanguages.first ?? "en-US"
+        let resolvedLanguage = language ?? Locale.preferredLanguages.first ?? "en-US"
         return try await tmdbClient.logoData(
             for: item,
             accessToken: token,
-            language: language
+            language: resolvedLanguage
         )
     }
 

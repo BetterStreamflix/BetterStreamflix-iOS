@@ -583,7 +583,7 @@ struct TMDBClientTests {
         #expect(request.url?.path == "/3/tv/202/images")
         let queryItems = URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?.queryItems
         #expect(queryItems?.first(where: { $0.name == "language" })?.value == "he-IL")
-        #expect(queryItems?.first(where: { $0.name == "include_image_language" })?.value == "he,en,null")
+        #expect(queryItems?.contains(where: { $0.name == "include_image_language" }) != true)
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
 
         let cachedURL = try await client.logoURL(

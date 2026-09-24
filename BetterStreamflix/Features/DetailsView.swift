@@ -97,33 +97,30 @@ struct DetailsView: View {
         .modifier(HeroViewportModifier())
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar(.visible, for: .tabBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                        .glassEffectWithFallback(in: Circle())
-                }
-                .accessibilityLabel("Back")
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .background {
             NavigationChromeStabilizer(enablesInteractivePop: true)
                 .frame(width: 0, height: 0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        .overlay(alignment: .top) {
-            PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 36)
-                .allowsHitTesting(false)
+        .overlay(alignment: .topLeading) {
+            // Single floating back control — avoids doubled system/toolbar chrome
+            // and the horizontal nav-bar strip across the hero.
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .glassEffectWithFallback(in: Circle())
+            }
+            .accessibilityLabel("Back")
+            .padding(.leading, 16)
+            .padding(.top, ScreenMetrics.topSafeAreaInset + 6)
         }
         .overlay { if model.isLoading && model.item.overview == nil { ProgressView() } }
         .overlay {
@@ -157,10 +154,12 @@ struct DetailsView: View {
                 isHeroArtworkLoading = false
             }
             let logoTask = Task { @MainActor in
-                let logo = await loadTitleLogo(for: initialItem)
-                guard !Task.isCancelled else { return }
-                tmdbTitleLogoData = logo
-                isTitleLogoResolved = true
+                // Prefer the title logo as soon as TMDB returns one. Keep trying
+                // after metadata correction so text fallback is only a last resort.
+                if let logo = await loadTitleLogo(for: initialItem) {
+                    tmdbTitleLogoData = logo
+                    isTitleLogoResolved = true
+                }
             }
             defer {
                 artworkTask.cancel()
@@ -175,7 +174,7 @@ struct DetailsView: View {
             await logoTask.value
             guard !Task.isCancelled else { return }
 
-            if model.item.tmdbID != initialItem.tmdbID {
+            if model.item.tmdbID != initialItem.tmdbID || tmdbTitleLogoData == nil {
                 async let correctedArtwork = sourceLookup.resolveArtwork(
                     for: model.item,
                     environment: environment
@@ -188,6 +187,7 @@ struct DetailsView: View {
                     tmdbHeroArtworkData = artwork
                 }
             }
+            isTitleLogoResolved = true
             guard !Task.isCancelled else { return }
             let preferredSeasonIsAvailable = preferredSeasonNumber.map { preferredNumber in
                 model.item.seasons.contains { $0.number == preferredNumber }
@@ -335,32 +335,23 @@ struct DetailsView: View {
     }
 
     private func loadTitleLogo(for item: MediaItem) async -> Data? {
-        enum Event: Sendable {
-            case loaded(Data?)
-            case timeout
-        }
-
-        return await withTaskGroup(of: Event.self) { group in
-            group.addTask {
-                .loaded(try? await environment.tmdbLogoData(for: item))
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(8))
-                return .timeout
+        // Prefer English / textless clear logos first, then the device language,
+        // so Featured-style title treatments show on Detail whenever TMDB has one.
+        let preferred = Locale.preferredLanguages.first ?? "en-US"
+        let languages = ["en-US", preferred]
+            .reduce(into: [String]()) { values, language in
+                if !values.contains(language) { values.append(language) }
             }
 
-            while let event = await group.next() {
-                switch event {
-                case .loaded(let data):
-                    group.cancelAll()
-                    return data
-                case .timeout:
-                    group.cancelAll()
-                    return nil
-                }
+        for language in languages {
+            if let data = try? await environment.tmdbLogoData(for: item, language: language),
+               let image = UIImage(data: data),
+               image.size.width > 4,
+               image.size.height > 4 {
+                return data
             }
-            return nil
         }
+        return nil
     }
 
     private var detailsMetadata: some View {

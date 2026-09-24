@@ -652,6 +652,10 @@ struct CatalogView: View {
                 }
             }
             .padding(.bottom)
+            .background {
+                AppScreenBackground()
+                    .padding(.vertical, -400)
+            }
         }
         .scrollIndicators(.automatic)
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)

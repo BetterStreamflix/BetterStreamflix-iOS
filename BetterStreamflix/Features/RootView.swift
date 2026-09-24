@@ -20,7 +20,7 @@ struct RootView: View {
     @StateObject private var libraryTitleTransitionSelection = TitleTransitionSelection()
     @StateObject private var moreTitleTransitionSelection = TitleTransitionSelection()
     @State private var selectedTab: Tab = .home
-    @State private var catalogSearchRequest = 0
+    @State private var isSearchPresented = false
     @State private var isHomeReady = false
     @State private var pendingAutomaticUpdate: GitHubRelease?
     @State private var automaticUpdateRelease: GitHubRelease?
@@ -40,7 +40,7 @@ struct RootView: View {
                 NavigationStack {
                     CatalogView(
                         kind: .movie,
-                        onOpenSearch: { selectedTab = .more; catalogSearchRequest += 1 }
+                        onOpenSearch: { isSearchPresented = true }
                     )
                 }
                 .environment(\.titleTransitionNamespace, movieTitleTransitionNamespace)
@@ -51,7 +51,7 @@ struct RootView: View {
                 NavigationStack {
                     CatalogView(
                         kind: .series,
-                        onOpenSearch: { selectedTab = .more; catalogSearchRequest += 1 }
+                        onOpenSearch: { isSearchPresented = true }
                     )
                 }
                 .environment(\.titleTransitionNamespace, seriesTitleTransitionNamespace)
@@ -65,7 +65,7 @@ struct RootView: View {
                     .tabItem { Label("Library", systemImage: "bookmark.fill") }
                     .tag(Tab.library)
 
-                MoreView(openSearchRequest: catalogSearchRequest)
+                MoreView(onOpenSearch: { isSearchPresented = true })
                     .environment(\.titleTransitionNamespace, moreTitleTransitionNamespace)
                     .environment(\.titleTransitionSelection, moreTitleTransitionSelection)
                     .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
@@ -90,6 +90,9 @@ struct RootView: View {
                     .transition(.opacity)
                     .zIndex(200)
             }
+        }
+        .fullScreenCover(isPresented: $isSearchPresented) {
+            SearchPresentationView()
         }
         .task { await environment.refreshContinueWatchingForNewEpisodes() }
         .task(id: isHomeReady) {
@@ -127,6 +130,7 @@ struct RootView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            .presentationCornerRadius(24)
         }
     }
 

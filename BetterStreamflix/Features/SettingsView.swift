@@ -387,7 +387,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.4"
+        ) as? String ?? "0.0.5"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"
@@ -580,7 +580,7 @@ struct UpdateCheckSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 22) {
                     switch result {
                     case .updateAvailable(let release):
                         updateAvailableContent(release)
@@ -611,12 +611,14 @@ struct UpdateCheckSheet: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(24)
+                .padding(.horizontal, 22)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
             }
             .background { AppScreenBackground() }
             .navigationTitle("Check for Updates")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -627,29 +629,39 @@ struct UpdateCheckSheet: View {
         }
         .tint(accentColor)
         .presentationBackground { AppScreenBackground() }
+        .presentationCornerRadius(24)
     }
 
     @ViewBuilder
     private func updateAvailableContent(_ release: GitHubRelease) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(accentColor)
-            Text("A new version was found")
-                .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(accentColor)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Update available")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(AppTheme.primaryText)
+                    Text(release.name.flatMap { $0.isEmpty ? nil : $0 } ?? release.tagName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(accentColor)
+                }
+                Spacer(minLength: 0)
+            }
         }
-        .font(.title2.bold())
-
-        Text(release.name.flatMap { $0.isEmpty ? nil : $0 } ?? release.tagName)
-            .font(.headline)
-            .foregroundStyle(accentColor)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .glassEffectWithFallback(in: Capsule())
-
-        Divider().opacity(0.4)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffectWithFallback(
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
 
         ReleaseNotesMarkdownView(source: release.body, accentColor: accentColor)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .glassEffectWithFallback(
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
             .textSelection(.enabled)
 
         Button {
@@ -663,12 +675,13 @@ struct UpdateCheckSheet: View {
         if let onRemindLater {
             Button("Remind me later", action: onRemindLater)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
                 .glassEffectWithFallback(in: Capsule())
         }
         if let onSkipUpdate {
             Button("Skip this version", action: onSkipUpdate)
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
                 .foregroundStyle(.secondary)
         }
     }

@@ -67,6 +67,8 @@ struct WatchlistToggleButton: View {
     let action: () -> Void
     var size: CGFloat = 36
     var glass: Bool = true
+    /// When true, the control stretches to fill available width (Featured CTA pair).
+    var expandsHorizontally: Bool = false
 
     @State private var bounce = false
 
@@ -78,7 +80,8 @@ struct WatchlistToggleButton: View {
             Image(systemName: isInWatchlist ? "checkmark" : "plus")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(width: size, height: size)
+                .frame(maxWidth: expandsHorizontally ? .infinity : nil)
+                .frame(width: expandsHorizontally ? nil : size, height: size)
                 .contentTransition(.symbolEffect(.replace))
                 .scaleEffect(bounce ? 1.12 : 1)
                 .animation(DesignTokens.Motion.watchlistBounce, value: isInWatchlist)
@@ -86,23 +89,40 @@ struct WatchlistToggleButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .modifier(WatchlistGlassBackground(enabled: glass))
+        .modifier(WatchlistGlassBackground(
+            enabled: glass,
+            shape: expandsHorizontally ? .capsule : .circle
+        ))
         .accessibilityLabel(isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist")
         // Haptics fire only from WatchlistFeedback.toggle on explicit user action —
         // never from sensoryFeedback on isInWatchlist (that re-triggers on carousel change).
     }
 }
 
+private enum WatchlistChromeShape {
+    case circle
+    case capsule
+}
+
 private struct WatchlistGlassBackground: ViewModifier {
     let enabled: Bool
+    var shape: WatchlistChromeShape = .circle
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if enabled {
-            content.glassEffectWithFallback(in: Circle())
-        } else {
-            content
-                .background(.white.opacity(0.18), in: Circle())
+        switch shape {
+        case .circle:
+            if enabled {
+                content.glassEffectWithFallback(in: Circle())
+            } else {
+                content.background(.white.opacity(0.18), in: Circle())
+            }
+        case .capsule:
+            if enabled {
+                content.glassEffectWithFallback(in: Capsule())
+            } else {
+                content.background(.white.opacity(0.18), in: Capsule())
+            }
         }
     }
 }

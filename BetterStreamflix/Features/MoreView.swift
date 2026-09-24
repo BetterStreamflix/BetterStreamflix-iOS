@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// Premium hub for Search, Settings, support, and updates — replaces the system More dump.
+/// Premium hub for Settings, support, and updates — Search opens as a standalone cover.
 struct MoreView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var path = NavigationPath()
     @State private var isCheckingForUpdates = false
     @State private var updateCheckResult: UpdateCheckResult?
     @State private var showCredits = false
-    var openSearchRequest: Int = 0
+    var onOpenSearch: (() -> Void)? = nil
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -21,7 +21,7 @@ struct MoreView: View {
                             subtitle: "Find movies and series",
                             systemImage: "magnifyingglass"
                         ) {
-                            path.append(MoreRoute.search)
+                            onOpenSearch?()
                         }
                         Divider().opacity(0.35)
                         hubRow(
@@ -108,33 +108,29 @@ struct MoreView: View {
                         .padding(.horizontal, 24)
                         .padding(.bottom, 28)
                 }
+                .background {
+                    AppScreenBackground()
+                        .padding(.vertical, -400)
+                }
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             .background { AppScreenBackground() }
             .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
             .toolbar(.visible, for: .tabBar)
             .navigationDestination(for: MoreRoute.self) { route in
                 switch route {
-                case .search:
-                    SearchView(
-                        isSearchPresented: .constant(true),
-                        isShowingDetails: .constant(false),
-                        focusRequest: 1,
-                        returnToRootRequest: 0
-                    )
                 case .settings:
                     SettingsView(showsInlineTitle: true)
                 case .library:
                     LibraryView(showsInlineTitle: true)
                 }
             }
-            .onChange(of: openSearchRequest) { _, _ in
-                path.append(MoreRoute.search)
-            }
             .sheet(item: $updateCheckResult) { result in
                 UpdateCheckSheet(result: result)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(24)
             }
             .sheet(isPresented: $showCredits) {
                 CreditsSheet()
@@ -193,7 +189,7 @@ struct MoreView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.4"
+        ) as? String ?? "0.0.5"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"
@@ -226,5 +222,5 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case search, settings, library
+    case settings, library
 }

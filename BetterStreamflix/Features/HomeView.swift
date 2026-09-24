@@ -307,7 +307,7 @@ struct TrendingHeroCarousel: View {
             .offset(x: titleContentOffset)
             .opacity(titleContentOpacity)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Button {
                     openCurrentDetails()
                 } label: {
@@ -320,7 +320,7 @@ struct TrendingHeroCarousel: View {
                     }
                     .font(.headline)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 36)
+                    .frame(height: 44)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.white)
@@ -330,12 +330,15 @@ struct TrendingHeroCarousel: View {
 
                 WatchlistToggleButton(
                     isInWatchlist: isCurrentTitleInWatchlist,
-                    action: { onToggleWatchlist(currentTitle) }
+                    action: { onToggleWatchlist(currentTitle) },
+                    size: 44,
+                    expandsHorizontally: true
                 )
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
                 .allowsHitTesting(!isCurrentTitleResolving)
             }
-            .padding(.horizontal, 22)
-            .modifier(HeroGlassClusterModifier())
+            .padding(.horizontal, 16)
 
         }
         .foregroundStyle(.white)
@@ -496,14 +499,14 @@ struct FeaturedTopChrome: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
-                PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 72)
+                PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 58)
                     .frame(maxWidth: .infinity)
 
-                HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
                     Image("AppLogo")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 34, height: 34)
+                        .frame(width: 32, height: 32)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
@@ -516,26 +519,17 @@ struct FeaturedTopChrome: View {
                             .foregroundStyle(.white.opacity(0.78))
                             .shadow(color: .black.opacity(0.45), radius: 6, y: 1)
                     }
-                    Spacer(minLength: 8)
-                    if titleCount > 1 {
-                        Text("\(currentIndex + 1) / \(titleCount)")
-                            .font(.caption.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background {
-                                Capsule()
-                                    .fill(Color.black.opacity(0.42))
-                                    .overlay {
-                                        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 0.8)
-                                    }
-                            }
-                            .background(.ultraThinMaterial.opacity(0.55), in: Capsule())
-                            .accessibilityLabel("Featured \(currentIndex + 1) of \(titleCount)")
-                    }
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, ScreenMetrics.topSafeAreaInset + 10)
+                .padding(.horizontal, 16)
+                // Sit the brand closer to the status bar / Dynamic Island.
+                .padding(.top, ScreenMetrics.topSafeAreaInset + 2)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(
+                    titleCount > 1
+                        ? "BetterStreamflix Featured, \(currentIndex + 1) of \(titleCount)"
+                        : "BetterStreamflix Featured"
+                )
             }
             Spacer(minLength: 0)
         }

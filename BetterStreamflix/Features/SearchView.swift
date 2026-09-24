@@ -17,11 +17,16 @@ struct SearchView: View {
     @Binding var isShowingDetails: Bool
     let focusRequest: Int
     let returnToRootRequest: Int
+    /// When true, Search is a standalone destination with system Back chrome
+    /// (not nested under the More tab large-title treatment).
+    var showsNavigationChrome: Bool = true
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
-                PageTitleHeader(title: "Search", ignoresTopSafeArea: true)
+                if !showsNavigationChrome {
+                    PageTitleHeader(title: "Search", ignoresTopSafeArea: true)
+                }
 
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
@@ -34,17 +39,20 @@ struct SearchView: View {
                         Button { model.query = "" } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.secondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Clear search")
                     }
                 }
                 .padding(.horizontal, 14)
-                .frame(height: 46)
+                .frame(minHeight: 46)
                 .glassEffectWithFallback(
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
                 .padding(.horizontal, 20)
+                .padding(.top, showsNavigationChrome ? 8 : 0)
 
                 if model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     if !model.recentSearches.isEmpty {
@@ -94,6 +102,14 @@ struct SearchView: View {
                             )
                         }
                     }
+                } else if model.results.isEmpty, !model.isLoading {
+                    ContentUnavailableView(
+                        "No matches",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try another title, or clear the search to browse Discover.")
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 36)
                 } else {
                     LazyVGrid(
                         columns: MediaArtworkLayout.gridColumns,
@@ -119,14 +135,19 @@ struct SearchView: View {
                     .padding(.horizontal, MediaArtworkLayout.gridHorizontalPadding)
                 }
             }
-            .padding(.bottom)
+            .padding(.bottom, 28)
+            // Stretch the themed fill into the bounce region so overscroll
+            // never flashes a black gap above the content.
+            .background {
+                AppScreenBackground()
+                    .padding(.vertical, -400)
+            }
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .scrollDismissesKeyboard(.interactively)
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        .background { AppScreenBackground() }
-        .ignoresSafeArea(edges: .top)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.visible, for: .tabBar)
+        .background { AppScreenBackground().ignoresSafeArea() }
+        .modifier(SearchChromeModifier(showsNavigationChrome: showsNavigationChrome))
         .onChange(of: model.query) { _, _ in model.search(environment: environment) }
         .onChange(of: isSearchPresented) { _, presented in
             if !presented { searchFieldIsFocused = false }
@@ -158,6 +179,10 @@ struct SearchView: View {
         .task {
             await discovery.load(environment: environment)
         }
+        .task(id: focusRequest) {
+            try? await Task.sleep(for: .milliseconds(280))
+            searchFieldIsFocused = true
+        }
         .errorAlert($model.errorMessage)
         .errorAlert($discovery.errorMessage)
     }
@@ -178,5 +203,65 @@ struct SearchView: View {
 
     private func transitionSourceID(for item: MediaItem) -> String {
         "\(item.artworkIdentityKey):search-grid"
+    }
+}
+
+private struct SearchChromeModifier: ViewModifier {
+    let showsNavigationChrome: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if showsNavigationChrome {
+            content
+                .navigationTitle("Search")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+                .toolbar(.visible, for: .navigationBar)
+                .toolbar(.hidden, for: .tabBar)
+        } else {
+            content
+                .ignoresSafeArea(edges: .top)
+                .toolbar(.hidden, for: .navigationBar)
+                .toolbar(.visible, for: .tabBar)
+        }
+    }
+}
+
+/// Standalone Search destination presented above the tab bar so Movies/Series
+/// shortcuts never leave the More tab highlighted underneath.
+struct SearchPresentationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var isSearchPresented = true
+    @State private var isShowingDetails = false
+    @State private var focusRequest = 1
+    @Namespace private var searchTitleTransitionNamespace
+    @StateObject private var searchTitleTransitionSelection = TitleTransitionSelection()
+
+    var body: some View {
+        NavigationStack {
+            SearchView(
+                isSearchPresented: $isSearchPresented,
+                isShowingDetails: $isShowingDetails,
+                focusRequest: focusRequest,
+                returnToRootRequest: 0,
+                showsNavigationChrome: true
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.body.weight(.semibold))
+                            Text("Back")
+                        }
+                    }
+                    .accessibilityLabel("Back")
+                }
+            }
+        }
+        .environment(\.titleTransitionNamespace, searchTitleTransitionNamespace)
+        .environment(\.titleTransitionSelection, searchTitleTransitionSelection)
     }
 }

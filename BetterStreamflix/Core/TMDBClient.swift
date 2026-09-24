@@ -796,9 +796,10 @@ actor TMDBClient {
         var components = URLComponents(
             string: "https://api.themoviedb.org/3/\(kind == .movie ? "movie" : "tv")/\(tmdbID)/images"
         )
+        // Omit include_image_language filter so clear title logos in any language
+        // are available; ranking still prefers the active language / English.
         components?.queryItems = [
             URLQueryItem(name: "language", value: language),
-            URLQueryItem(name: "include_image_language", value: includedLanguages),
         ]
         guard let url = components?.url else { throw AppError.invalidURL }
 

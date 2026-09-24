@@ -9,7 +9,7 @@ struct SplashScreen: View {
     private var versionText: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.4"
+        ) as? String ?? "0.0.5"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String

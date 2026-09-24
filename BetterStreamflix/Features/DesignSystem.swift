@@ -384,8 +384,8 @@ struct PageTitleTopScrim: View {
     var body: some View {
         LinearGradient(
             colors: [
-                Color.black.opacity(0.72),
-                Color.black.opacity(0.38),
+                Color.black.opacity(0.55),
+                Color.black.opacity(0.22),
                 Color.black.opacity(0),
             ],
             startPoint: .top,
@@ -433,6 +433,15 @@ struct NavigationChromeStabilizer: UIViewControllerRepresentable {
             super.viewWillDisappear(animated)
             // Leaving an immersive screen should never leave the tab bar stuck hidden
             // on the parent navigation stack.
+            if let tabBarController {
+                tabBarController.tabBar.isHidden = false
+            }
+            // Also restore via the navigation controller's toolbar visibility path.
+            navigationController?.setToolbarHidden(false, animated: false)
+        }
+
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
             tabBarController?.tabBar.isHidden = false
         }
 
