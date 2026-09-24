@@ -7,6 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DADB97AC880BDA6EC842727E /* EnglishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */; };
+		7C2EDBE0EB326AE07E8CDC83 /* FrenchPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */; };
+		F4351AA8A81AEAF523003237 /* GermanPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */; };
+		D11A4EFD8BEB43E81744EC65 /* HosterExtractors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2605D48CCCBAB4C6EA728606 /* HosterExtractors.swift */; };
+		AB22DD5167030B6ACCB81166 /* InternationalPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */; };
+		509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */; };
+		F5F167C4365C4BF785264ADC /* OpenSubtitlesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */; };
+		14DE0984B751C5DC3FEB1C70 /* PolishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */; };
+		3B0F7F0842BB420130BA8E36 /* ProviderCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */; };
+		4946995FDDA637021C797408 /* SpanishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */; };
 		1472CE33F4F8C621E976745E /* PlayerSourceSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55506E805C529E255E1C5FDB /* PlayerSourceSwitchTests.swift */; };
 		15C3A55C51E7493694323D03 /* PlaybackSeekTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44EE7D6F5A1E4D9D829CFC8B /* PlaybackSeekTests.swift */; };
 		194E84373A3313788D7814D8 /* UserDataBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDE955356AA93FC1945591F /* UserDataBackup.swift */; };
@@ -75,6 +85,16 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishPlaybackProviders.swift; sourceTree = "<group>"; };
+		6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrenchPlaybackProviders.swift; sourceTree = "<group>"; };
+		C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GermanPlaybackProviders.swift; sourceTree = "<group>"; };
+		2605D48CCCBAB4C6EA728606 /* HosterExtractors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HosterExtractors.swift; sourceTree = "<group>"; };
+		6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InternationalPlaybackProviders.swift; sourceTree = "<group>"; };
+		2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItalianPlaybackProviders.swift; sourceTree = "<group>"; };
+		01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSubtitlesProvider.swift; sourceTree = "<group>"; };
+		B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishPlaybackProviders.swift; sourceTree = "<group>"; };
+		BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderCatalog.swift; sourceTree = "<group>"; };
+		9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpanishPlaybackProviders.swift; sourceTree = "<group>"; };
 		06C3337ACED2B2DC57D7FF2B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		07A72147F0EA305FD7782DE1 /* HTMLPayloadParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLPayloadParser.swift; sourceTree = "<group>"; };
 		112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiscoveryTests.swift; sourceTree = "<group>"; };
@@ -167,6 +187,16 @@
 		4D294A30460170810C8D746B /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */,
+				6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */,
+				C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */,
+				2605D48CCCBAB4C6EA728606 /* HosterExtractors.swift */,
+				6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */,
+				2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */,
+				01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */,
+				B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */,
+				BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */,
+				9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */,
 				7AB858013062E094007A449E /* SkipSegments.swift */,
 				C3CC4AEE056C846C5C23DA7B /* AnimePlaybackProvider.swift */,
 				80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */,
@@ -340,6 +370,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DADB97AC880BDA6EC842727E /* EnglishPlaybackProviders.swift in Sources */,
+				7C2EDBE0EB326AE07E8CDC83 /* FrenchPlaybackProviders.swift in Sources */,
+				F4351AA8A81AEAF523003237 /* GermanPlaybackProviders.swift in Sources */,
+				D11A4EFD8BEB43E81744EC65 /* HosterExtractors.swift in Sources */,
+				AB22DD5167030B6ACCB81166 /* InternationalPlaybackProviders.swift in Sources */,
+				509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */,
+				F5F167C4365C4BF785264ADC /* OpenSubtitlesProvider.swift in Sources */,
+				14DE0984B751C5DC3FEB1C70 /* PolishPlaybackProviders.swift in Sources */,
+				3B0F7F0842BB420130BA8E36 /* ProviderCatalog.swift in Sources */,
+				4946995FDDA637021C797408 /* SpanishPlaybackProviders.swift in Sources */,
 				E41BA08FACF5DDC4B04EFC95 /* AnimePlaybackProvider.swift in Sources */,
 				7AB858023062E096007A449E /* SkipSegments.swift in Sources */,
 				4A5B080F481FDC01A0663FA2 /* AnimeStreamResolver.swift in Sources */,
