@@ -391,6 +391,9 @@ enum HosterExtractor {
         if host.contains("vidara") || hint.contains("vidara") {
             return try await vidara(url)
         }
+        if host.contains("vidsonic") || hint.contains("vidsonic") {
+            return try await vidsonic(url)
+        }
         return try await generic(url, referer: referer, depth: depth)
     }
 
@@ -686,6 +689,38 @@ enum HosterExtractor {
     /// is the only way to spot a mirror whose domain nobody has seen before.
     static func looksLikeVidara(_ html: String) -> Bool {
         html.contains("api/stream") && html.contains("filecode")
+    }
+
+    // MARK: Vidsonic
+
+    /// Ported from `VidsonicExtractor`: the playlist URL sits in the page as
+    /// reversed ASCII, written out as pipe-grouped hex pairs.
+    static func vidsonic(_ link: URL) async throws -> PlaybackSource {
+        let html = try await HosterHTTP.shared.page(link, referer: link)
+        guard let match = AnimeHTML.captures(#"const\s+\w+\s*=\s*'([a-fA-F0-9|]{50,})'"#, in: html).first,
+              let decoded = reversedHexString(match[1]),
+              let source = URL(string: decoded) else { throw AppError.noStream }
+        return PlaybackSource(
+            url: source,
+            headers: [
+                "Referer": link.origin + "/",
+                "Origin": link.origin,
+                "User-Agent": HTTPClient.desktopUserAgent,
+            ],
+            subtitles: [],
+            preferredPeakBitRate: nil
+        )
+    }
+
+    static func reversedHexString(_ value: String) -> String? {
+        let digits = Array(value.replacingOccurrences(of: "|", with: ""))
+        guard digits.count >= 2, digits.count.isMultiple(of: 2) else { return nil }
+        var scalars = String.UnicodeScalarView()
+        for index in stride(from: 0, to: digits.count, by: 2) {
+            guard let byte = UInt8(String(digits[index...(index + 1)]), radix: 16) else { return nil }
+            scalars.append(Unicode.Scalar(byte))
+        }
+        return String(String(scalars).reversed())
     }
 
     // MARK: Embed wrappers and generic pages
