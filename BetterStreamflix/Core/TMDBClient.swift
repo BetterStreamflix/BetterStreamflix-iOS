@@ -291,6 +291,65 @@ actor TMDBClient {
         }
     }
 
+    func personProfile(
+        id: Int,
+        accessToken: String,
+        language: String = "en-US"
+    ) async throws -> PersonProfile {
+        guard !accessToken.isEmpty else { throw TMDBError.missingAccessToken }
+        async let detailsTask = personDetails(id: id, accessToken: accessToken, language: language)
+        async let creditsTask = personCombinedCredits(id: id, accessToken: accessToken, language: language)
+        let details = try await detailsTask
+        let credits = try await creditsTask
+        let knownFor = Array(credits.prefix(12))
+        return PersonProfile(
+            id: details.id,
+            name: details.name,
+            biography: details.biography.flatMap { $0.isEmpty ? nil : $0 },
+            birthday: details.birthday,
+            placeOfBirth: details.placeOfBirth,
+            knownForDepartment: details.knownForDepartment,
+            profileURL: details.profilePath.flatMap {
+                URL(string: "https://image.tmdb.org/t/p/original\($0)")
+            },
+            knownFor: knownFor.map(\.asTrendingTitle),
+            filmography: credits
+        )
+    }
+
+    private func personDetails(
+        id: Int,
+        accessToken: String,
+        language: String
+    ) async throws -> TMDBPersonDetailsPayload {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/person/\(id)")
+        components?.queryItems = [URLQueryItem(name: "language", value: language)]
+        guard let url = components?.url else { throw AppError.invalidURL }
+        let response = try await client.data(for: authorizedRequest(url: url, accessToken: accessToken))
+        do {
+            return try JSONDecoder().decode(TMDBPersonDetailsPayload.self, from: response.data)
+        } catch {
+            throw AppError.decoding(error.localizedDescription)
+        }
+    }
+
+    private func personCombinedCredits(
+        id: Int,
+        accessToken: String,
+        language: String
+    ) async throws -> [PersonCredit] {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/person/\(id)/combined_credits")
+        components?.queryItems = [URLQueryItem(name: "language", value: language)]
+        guard let url = components?.url else { throw AppError.invalidURL }
+        let response = try await client.data(for: authorizedRequest(url: url, accessToken: accessToken))
+        do {
+            let payload = try JSONDecoder().decode(TMDBPersonCreditsPayload.self, from: response.data)
+            return payload.credits
+        } catch {
+            throw AppError.decoding(error.localizedDescription)
+        }
+    }
+
     func episodes(
         for season: MediaSeason,
         show: MediaItem,
@@ -1284,7 +1343,8 @@ private struct TMDBDetailsPayload: Decodable, Sendable {
                 CastMember(
                     id: "tmdb-person-\($0.id)",
                     name: $0.name,
-                    imageURL: $0.profilePath.flatMap(Self.imageURL)
+                    imageURL: $0.profilePath.flatMap(Self.imageURL),
+                    tmdbID: $0.id
                 )
             },
             seasons: (seasons ?? [])
@@ -1428,5 +1488,86 @@ private extension MediaKind {
         case "tv": self = .series
         default: return nil
         }
+    }
+}
+
+private struct TMDBPersonDetailsPayload: Decodable, Sendable {
+    let id: Int
+    let name: String
+    let biography: String?
+    let birthday: String?
+    let placeOfBirth: String?
+    let knownForDepartment: String?
+    let profilePath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, biography, birthday
+        case placeOfBirth = "place_of_birth"
+        case knownForDepartment = "known_for_department"
+        case profilePath = "profile_path"
+    }
+}
+
+private struct TMDBPersonCreditsPayload: Decodable, Sendable {
+    struct Credit: Decodable, Sendable {
+        let id: Int
+        let mediaType: String?
+        let title: String?
+        let name: String?
+        let character: String?
+        let job: String?
+        let releaseDate: String?
+        let firstAirDate: String?
+        let posterPath: String?
+        let voteAverage: Double?
+        let popularity: Double?
+        let adult: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case id, title, name, character, job, popularity, adult
+            case mediaType = "media_type"
+            case releaseDate = "release_date"
+            case firstAirDate = "first_air_date"
+            case posterPath = "poster_path"
+            case voteAverage = "vote_average"
+        }
+
+        func personCredit() -> PersonCredit? {
+            guard adult != true,
+                  let mediaType,
+                  let kind = MediaKind(tmdbMediaType: mediaType),
+                  let displayTitle = title ?? name else { return nil }
+            return PersonCredit(
+                id: "\(kind.rawValue)-\(id)",
+                tmdbID: id,
+                kind: kind,
+                title: displayTitle,
+                character: character.flatMap { $0.isEmpty ? nil : $0 },
+                job: job.flatMap { $0.isEmpty ? nil : $0 },
+                releaseDate: releaseDate ?? firstAirDate,
+                posterURL: posterPath.flatMap {
+                    URL(string: "https://image.tmdb.org/t/p/original\($0)")
+                },
+                rating: voteAverage
+            )
+        }
+    }
+
+    let cast: [Credit]
+    let crew: [Credit]
+
+    var credits: [PersonCredit] {
+        var seen = Set<String>()
+        var ordered: [(credit: PersonCredit, popularity: Double)] = []
+        for entry in cast + crew {
+            guard let credit = entry.personCredit(), seen.insert(credit.id).inserted else { continue }
+            ordered.append((credit, entry.popularity ?? 0))
+        }
+        return ordered
+            .sorted { lhs, rhs in
+                if lhs.popularity != rhs.popularity { return lhs.popularity > rhs.popularity }
+                return (lhs.credit.releaseDate ?? "") > (rhs.credit.releaseDate ?? "")
+            }
+            .map(\.credit)
     }
 }

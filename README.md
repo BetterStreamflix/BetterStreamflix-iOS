@@ -4,8 +4,8 @@ Native SwiftUI client for BetterStreamflix — browse, detail, playback, library
 
 ## Requirements
 
-- macOS with Xcode 16 or newer (iOS platform installed in **Xcode → Settings → Components**)
-- iOS / iPadOS 17+
+- macOS with Xcode that ships the **iOS 26** SDK
+- iOS / iPadOS 26+
 - Apple Developer account for physical-device installs
 
 No third-party Swift packages are required.
@@ -20,7 +20,7 @@ No third-party Swift packages are required.
 
 ## Version
 
-Current marketing version: **0.0.1**. CI advances the build number on each release.
+Current marketing version: **0.0.2**. CI advances the build number on each release.
 
 ## Unsigned IPA (GitHub Actions + Releases)
 
@@ -40,16 +40,17 @@ Every push to `main` runs **Unsigned IPA** (`.github/workflows/unsigned-ipa.yml`
 
 Settings → About → **Check for updates** shows the installed version and opens **GitHub Releases** so you can download the newest unsigned IPA. No personal access token is embedded in the app.
 
-Locally: `./build-unsigned-ipa.sh 0.0.1`.
+Locally: `./build-unsigned-ipa.sh 0.0.2`.
 
 ## Features
 
-- Cinematic Home hero, Continue Watching, Watchlist, and TMDB shelves
-- Library tab (Continue / Watchlist / Watched)
-- Movies & Series catalogs, Search with recent queries
-- Detail with cast carousel, seasons/episodes, Play / My List
-- AVPlayer HLS with source/quality, double-tap ±10s, volume/brightness pans, PiP / AirPlay
-- Settings / About: themes, languages, backup, updates via Releases, community links, credits
+- Cinematic Home hero with Liquid Glass action cluster, Continue Watching, Watchlist feedback, and TMDB shelves
+- Library tab (Continue / Watchlist / Watched) with glass empty states
+- Movies & Series catalogs, Search with glass recent chips
+- Detail with tapable cast → full actor profiles, seasons/episodes, Play / My List
+- Logo-only splash; branded About support CTAs (Coffee, Telegram, Discord, Patreon)
+- AVPlayer HLS with source/quality, double-tap ±10s, volume/brightness pans, glass controls, PiP / AirPlay
+- Settings / About: themes, languages, backup, updates via Releases, community CTAs, credits
 
 ## Legal
 

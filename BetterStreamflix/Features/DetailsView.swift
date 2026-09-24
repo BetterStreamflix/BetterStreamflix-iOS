@@ -16,6 +16,8 @@ struct DetailsView: View {
     @State private var tmdbTitleLogoData: Data?
     @State private var isHeroArtworkLoading = true
     @State private var isTitleLogoResolved = false
+    @State private var watchlistToast: WatchlistFeedback.Toast?
+    @State private var selectedPerson: CastMember?
 
     init(item: MediaItem, tmdbMetadata: TrendingTitle? = nil) {
         _model = StateObject(wrappedValue: DetailsViewModel(
@@ -37,7 +39,7 @@ struct DetailsView: View {
                     HStack(spacing: 12) {
                         Button {
                             guard let request = primaryPlaybackRequest else { return }
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            DesignTokens.Haptics.primaryAction()
                             Task { await beginPlayback(request) }
                         } label: {
                             Label(primaryActionTitle, systemImage: "play.fill")
@@ -48,21 +50,32 @@ struct DetailsView: View {
                         .buttonStyle(AppPrimaryButtonStyle(glow: environment.theme.glow))
                         .disabled(primaryPlaybackRequest == nil)
 
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            library.toggleWatchlist(model.item)
-                        } label: {
-                            Image(systemName: library.isInWatchlist(model.item) ? "checkmark" : "plus")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(environment.theme.accent)
-                                .frame(width: 44, height: 44)
-                                .background(AppTheme.elevatedSurface, in: Circle())
-                                .overlay {
-                                    Circle().stroke(environment.theme.accent.opacity(0.34), lineWidth: 1)
+                        WatchlistToggleButton(
+                            isInWatchlist: library.isInWatchlist(model.item),
+                            action: {
+                                WatchlistFeedback.toggle(
+                                    model.item,
+                                    in: library,
+                                    reduceMotion: reduceMotion
+                                ) { toast in
+                                    withAnimation(DesignTokens.Motion.toast) {
+                                        watchlistToast = toast
+                                    }
+                                    Task {
+                                        try? await Task.sleep(for: .seconds(1.6))
+                                        await MainActor.run {
+                                            withAnimation(DesignTokens.Motion.toast) {
+                                                if watchlistToast == toast {
+                                                    watchlistToast = nil
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                        }
-                        .buttonStyle(.plain)
-                        .shadow(color: environment.theme.glow.opacity(0.35), radius: 8)
+                            },
+                            size: 44,
+                            glass: true
+                        )
                         .accessibilityLabel(
                             library.isInWatchlist(model.item) ? "Remove from My List" : "Add to My List"
                         )
@@ -75,28 +88,7 @@ struct DetailsView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(alignment: .top, spacing: 12) {
                                 ForEach(model.item.cast) { member in
-                                    VStack(spacing: 8) {
-                                        CachedRemoteImage(url: member.imageURL) { image in
-                                            image.resizable().scaledToFill()
-                                        } placeholder: {
-                                            Circle()
-                                                .fill(AppTheme.elevatedSurface)
-                                                .overlay {
-                                                    Text(String(member.name.prefix(1)))
-                                                        .font(.headline)
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                        }
-                                        .frame(width: 72, height: 72)
-                                        .clipShape(Circle())
-                                        Text(member.name)
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(AppTheme.primaryText)
-                                            .lineLimit(2)
-                                            .multilineTextAlignment(.center)
-                                            .frame(width: 80)
-                                    }
-                                    .accessibilityElement(children: .combine)
+                                    castMemberButton(member)
                                 }
                             }
                         }
@@ -117,6 +109,11 @@ struct DetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .overlay(alignment: .top) {
+            WatchlistToastBanner(toast: watchlistToast)
+                .padding(.top, 8)
+                .animation(DesignTokens.Motion.toast, value: watchlistToast)
+        }
         .overlay { if model.isLoading && model.item.overview == nil { ProgressView() } }
         .overlay {
             if let episodeInfo {
@@ -193,6 +190,13 @@ struct DetailsView: View {
                 selectedSeasonNumber = model.orderedSeasons.first?.number
             }
         }
+        .navigationDestination(item: $selectedPerson) { member in
+            PersonProfileView(
+                personID: member.tmdbID ?? 0,
+                placeholderName: member.name,
+                placeholderImageURL: member.imageURL
+            )
+        }
         .fullScreenCover(isPresented: Binding(get: { playback != nil }, set: { if !$0 { playback = nil } })) {
             if let playback {
                 PlayerScreen(request: playback, nextRequest: nextRequest(after: playback.episode))
@@ -200,6 +204,50 @@ struct DetailsView: View {
         }
         .errorAlert($model.errorMessage)
         .titleNavigationTransition(id: model.item.artworkIdentityKey)
+    }
+
+    @ViewBuilder
+    private func castMemberButton(_ member: CastMember) -> some View {
+        let content = VStack(spacing: 8) {
+            CachedRemoteImage(url: member.imageURL) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                Circle()
+                    .fill(AppTheme.elevatedSurface)
+                    .overlay {
+                        Text(String(member.name.prefix(1)))
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
+            }
+            .frame(width: 72, height: 72)
+            .clipShape(Circle())
+            .overlay {
+                if member.canOpenProfile {
+                    Circle().stroke(environment.theme.accent.opacity(0.35), lineWidth: 1)
+                }
+            }
+            Text(member.name)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppTheme.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(width: 80)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(member.canOpenProfile ? .isButton : [])
+
+        if member.canOpenProfile {
+            Button {
+                DesignTokens.Haptics.selection()
+                selectedPerson = member
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
     }
 
     private var detailsHero: some View {

@@ -144,7 +144,7 @@ struct LibraryView: View {
                                 openDetails(item)
                             }
                             Button(role: .destructive) {
-                                library.toggleWatchlist(item)
+                                WatchlistFeedback.toggle(item, in: library)
                             } label: {
                                 DestructiveTrashLabel(title: "Remove from Watchlist")
                             }
@@ -233,11 +233,13 @@ struct LibraryEmptyState: View {
     let systemImage: String
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Spacer(minLength: 48)
             Image(systemName: systemImage)
-                .font(.system(size: 42, weight: .light))
-                .foregroundStyle(AppTheme.primaryText.opacity(0.42))
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(AppTheme.primaryText.opacity(0.55))
+                .frame(width: 88, height: 88)
+                .glassEffectWithFallback(in: Circle())
                 .accessibilityHidden(true)
             Text(title)
                 .font(.title3.weight(.semibold))

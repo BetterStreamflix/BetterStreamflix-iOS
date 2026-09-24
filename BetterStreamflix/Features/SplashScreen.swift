@@ -9,7 +9,7 @@ struct SplashScreen: View {
     private var versionText: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.1"
+        ) as? String ?? "0.0.2"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String
@@ -21,11 +21,15 @@ struct SplashScreen: View {
 
     var body: some View {
         ZStack {
+            // Full-bleed graphite matching launch screen — no side letterboxing.
+            Color(hex: 0x080A0C)
+                .ignoresSafeArea()
+
             LinearGradient(
                 colors: [
                     Color(hex: 0x05070C),
-                    environment.theme.backgroundSecondary,
-                    Color(hex: 0x080A10)
+                    environment.theme.backgroundSecondary.opacity(0.85),
+                    Color(hex: 0x080A0C)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -34,61 +38,47 @@ struct SplashScreen: View {
 
             RadialGradient(
                 colors: [
-                    environment.theme.accent.opacity(0.28),
-                    environment.theme.glow.opacity(0.12),
+                    environment.theme.accent.opacity(0.22),
+                    environment.theme.glow.opacity(0.1),
                     .clear
                 ],
                 center: .center,
-                startRadius: 20,
-                endRadius: 220
+                startRadius: 24,
+                endRadius: 260
             )
-            .frame(width: 420, height: 420)
-            .scaleEffect(isBreathing ? 1.05 : 0.94)
+            .scaleEffect(isBreathing ? 1.06 : 0.94)
             .opacity(isVisible ? 1 : 0)
-            .blur(radius: reduceMotion ? 0 : 8)
+            .blur(radius: reduceMotion ? 0 : 10)
+            .ignoresSafeArea()
             .allowsHitTesting(false)
             .accessibilityHidden(true)
 
-            VStack(spacing: DesignTokens.Spacing.lg) {
-                Image("AppLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 148, height: 148)
-                    .shadow(color: environment.theme.glow.opacity(0.55), radius: 28, y: 8)
-                    .scaleEffect(isVisible ? 1 : 0.88)
-                    .accessibilityHidden(true)
-
-                VStack(spacing: 8) {
-                    Text("BetterStreamflix")
-                        .font(DesignTokens.Typography.brand)
-                        .tracking(1.2)
-                        .foregroundStyle(AppTheme.primaryText)
-
-                    Text("Cinematic streaming")
-                        .font(DesignTokens.Typography.caption)
-                        .foregroundStyle(AppTheme.primaryText.opacity(0.55))
-                }
+            Image("SplashMark")
+                .resizable()
+                .scaledToFill()
+                .frame(width: 168, height: 168)
+                .clipShape(RoundedRectangle(cornerRadius: 38, style: .continuous))
+                .shadow(color: environment.theme.glow.opacity(0.5), radius: 28, y: 10)
+                .scaleEffect(isVisible ? (isBreathing && !reduceMotion ? 1.02 : 1) : 0.88)
                 .opacity(isVisible ? 1 : 0)
-
-                ProgressView()
-                    .tint(environment.theme.accentBright)
-                    .controlSize(.small)
-                    .padding(.top, 6)
-                    .opacity(isVisible ? 1 : 0)
-                    .accessibilityLabel("Loading")
-            }
-            .scaleEffect(isVisible ? (isBreathing && !reduceMotion ? 1.012 : 1) : 0.94)
-            .animation(
-                reduceMotion ? nil : .easeInOut(duration: 2.1).repeatForever(autoreverses: true),
-                value: isBreathing
-            )
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 2.0).repeatForever(autoreverses: true),
+                    value: isBreathing
+                )
+                .accessibilityHidden(true)
 
             VStack {
                 Spacer()
+                ProgressView()
+                    .tint(environment.theme.accentBright)
+                    .controlSize(.small)
+                    .opacity(isVisible ? 0.85 : 0)
+                    .padding(.bottom, 10)
+                    .accessibilityLabel("Loading")
                 Text(versionText)
                     .font(DesignTokens.Typography.micro)
-                    .foregroundStyle(AppTheme.primaryText.opacity(0.38))
-                    .padding(.bottom, 18)
+                    .foregroundStyle(AppTheme.primaryText.opacity(0.34))
+                    .padding(.bottom, 20)
             }
             .opacity(isVisible ? 1 : 0)
         }

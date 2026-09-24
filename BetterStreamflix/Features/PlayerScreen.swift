@@ -1670,10 +1670,7 @@ struct PlayerScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
-        .background(
-            .ultraThinMaterial,
-            in: Capsule()
-        )
+        .glassEffectWithFallback(in: Capsule())
         .overlay {
             Capsule()
                 .stroke(

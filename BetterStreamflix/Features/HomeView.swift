@@ -7,10 +7,12 @@ struct HomeView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var sourceLookup: SourceLookupCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onInitialLoadCompleted: () -> Void
     @StateObject private var model = HomeViewModel()
     @State private var selectedDetails: ResolvedMediaItem?
     @State private var playback: PlaybackRequest?
+    @State private var watchlistToast: WatchlistFeedback.Toast?
 
     init(onInitialLoadCompleted: @escaping () -> Void = {}) {
         self.onInitialLoadCompleted = onInitialLoadCompleted
@@ -83,6 +85,10 @@ struct HomeView: View {
         .ignoresSafeArea(edges: .top)
         .modifier(HeroViewportModifier())
         .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .top) {
+            WatchlistToastBanner(toast: watchlistToast)
+                .animation(DesignTokens.Motion.toast, value: watchlistToast)
+        }
         .task {
             await model.loadTrending(environment: environment)
             onInitialLoadCompleted()
@@ -116,17 +122,26 @@ struct HomeView: View {
     }
 
     private func toggleWatchlist(_ trending: TrendingTitle) {
-        if let existingItem = library.watchlist.first(where: {
-            $0.kind == trending.kind && $0.tmdbID == trending.id
-        }) {
-            library.toggleWatchlist(existingItem)
-            return
+        let toast = WatchlistFeedback.toggleTrending(
+            trending,
+            in: library,
+            reduceMotion: reduceMotion
+        ) { toast in
+            withAnimation(DesignTokens.Motion.toast) {
+                watchlistToast = toast
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(1.6))
+                await MainActor.run {
+                    withAnimation(DesignTokens.Motion.toast) {
+                        if watchlistToast == toast {
+                            watchlistToast = nil
+                        }
+                    }
+                }
+            }
         }
-
-        let item = MediaItem.tmdbCatalogItem(from: trending)
-        if !library.isInWatchlist(item) {
-            library.toggleWatchlist(item)
-        }
+        _ = toast
     }
 
     private func markAsWatched(_ value: WatchProgress) {
@@ -328,22 +343,14 @@ struct TrendingHeroCarousel: View {
                 .clipShape(Capsule())
                 .allowsHitTesting(!isCurrentTitleResolving)
 
-                Button {
-                    onToggleWatchlist(currentTitle)
-                } label: {
-                    Image(systemName: isCurrentTitleInWatchlist ? "checkmark" : "plus")
-                        .font(.title3.weight(.semibold))
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.white.opacity(0.18))
-                .clipShape(Circle())
-                .allowsHitTesting(!isCurrentTitleResolving)
-                .accessibilityLabel(
-                    isCurrentTitleInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"
+                WatchlistToggleButton(
+                    isInWatchlist: isCurrentTitleInWatchlist,
+                    action: { onToggleWatchlist(currentTitle) }
                 )
+                .allowsHitTesting(!isCurrentTitleResolving)
             }
             .padding(.horizontal, 22)
+            .modifier(HeroGlassClusterModifier())
 
         }
         .foregroundStyle(.white)

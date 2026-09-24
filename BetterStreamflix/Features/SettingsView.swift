@@ -198,69 +198,20 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Menu {
-                        Button {
-                            subDLSubtitlesEnabled.toggle()
-                        } label: {
-                            Label(
-                                "SubDL",
-                                systemImage: subDLSubtitlesEnabled
-                                    ? "checkmark"
-                                    : "circle"
-                            )
-                        }
-
-                        Button {
-                            wizdomSubtitlesEnabled.toggle()
-                        } label: {
-                            Label(
-                                "Wizdom",
-                                systemImage: wizdomSubtitlesEnabled
-                                    ? "checkmark"
-                                    : "circle"
-                            )
-                        }
-
-                        Button {
-                            ktuvitSubtitlesEnabled.toggle()
-                        } label: {
-                            Label(
-                                "Ktuvit",
-                                systemImage: ktuvitSubtitlesEnabled
-                                    ? "checkmark"
-                                    : "circle"
-                            )
-                        }
-
-                        Button {
-                            externalStreamSubtitlesEnabled.toggle()
-                        } label: {
-                            Label(
-                                "External Streams",
-                                systemImage: externalStreamSubtitlesEnabled
-                                    ? "checkmark"
-                                    : "circle"
-                            )
-                        }
-                    } label: {
-                        HStack {
-                            Text("Sources")
-
-                            Spacer()
-
-                            Text(subtitleProviderSummary)
-                                .foregroundStyle(.secondary)
-
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    Toggle("SubDL", isOn: $subDLSubtitlesEnabled)
+                    Toggle("Wizdom", isOn: $wizdomSubtitlesEnabled)
+                    Toggle("Ktuvit", isOn: $ktuvitSubtitlesEnabled)
+                    Toggle("External Streams", isOn: $externalStreamSubtitlesEnabled)
 
                     Toggle(
                         "Use latest saved sync automatically",
                         isOn: $autoSelectLatestSubtitleSync
                     )
+
+                    LabeledContent("Sources enabled") {
+                        Text(subtitleProviderSummary)
+                            .foregroundStyle(.secondary)
+                    }
 
                     Text(
                         "Choose which third-party subtitle services BetterStreamflix should search. Fewer sources can improve playback startup time."
@@ -291,6 +242,7 @@ struct SettingsView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
                             Text("BetterStreamflix")
@@ -318,20 +270,12 @@ struct SettingsView: View {
                     }
                     .disabled(isCheckingForUpdates)
 
+                    SupportCTAStack()
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                        .listRowBackground(Color.clear)
+
                     Link(destination: SupportLinks.githubRepository) {
                         Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
-                    }
-                    Link(destination: SupportLinks.buyMeACoffee) {
-                        Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill")
-                    }
-                    Link(destination: SupportLinks.telegram) {
-                        Label("Telegram", systemImage: "paperplane.fill")
-                    }
-                    Link(destination: SupportLinks.discord) {
-                        Label("Discord", systemImage: "bubble.left.and.bubble.right.fill")
-                    }
-                    Link(destination: SupportLinks.patreon) {
-                        Label("Patreon", systemImage: "heart.fill")
                     }
 
                     Button {
@@ -419,7 +363,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.1"
+        ) as? String ?? "0.0.2"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"

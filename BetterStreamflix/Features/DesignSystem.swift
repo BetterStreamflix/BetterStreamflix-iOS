@@ -35,6 +35,27 @@ enum DesignTokens {
         static let soft = Animation.easeInOut(duration: 0.28)
         static let press = Animation.easeOut(duration: 0.16)
         static let heroCrossfade = Animation.easeInOut(duration: 0.45)
+        static let watchlistBounce = Animation.spring(response: 0.38, dampingFraction: 0.55)
+        static let toast = Animation.spring(response: 0.42, dampingFraction: 0.82)
+        static let glassMorph = Animation.spring(response: 0.45, dampingFraction: 0.78)
+    }
+
+    enum Haptics {
+        static func watchlistAdded() {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+
+        static func watchlistRemoved() {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+
+        static func primaryAction() {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
+
+        static func selection() {
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
     }
 
     enum Elevation {
@@ -297,6 +318,16 @@ extension View {
         modifier(PressablePosterModifier())
     }
 
+    /// Applies Liquid Glass when available; otherwise a soft material fallback.
+    @ViewBuilder
+    func glassEffectWithFallback(in shape: some Shape = .capsule) -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            self.background(.ultraThinMaterial, in: shape)
+        }
+    }
+
     func errorAlert(_ message: Binding<String?>) -> some View {
         alert(
             "Something went wrong",
@@ -326,5 +357,18 @@ struct PressablePosterModifier: ViewModifier {
                     .onChanged { _ in isPressed = true }
                     .onEnded { _ in isPressed = false }
             )
+    }
+}
+
+struct HeroGlassClusterModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 12) {
+                content
+            }
+        } else {
+            content
+        }
     }
 }

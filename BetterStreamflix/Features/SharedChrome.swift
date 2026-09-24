@@ -34,6 +34,7 @@ struct MediaTitlePosterActions: View {
 
 struct MediaTitleWatchlistAction: View {
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: MediaItem
 
     private var existingWatchlistItem: MediaItem? {
@@ -50,7 +51,11 @@ struct MediaTitleWatchlistAction: View {
 
     var body: some View {
         Button {
-            library.toggleWatchlist(existingWatchlistItem ?? item)
+            WatchlistFeedback.toggle(
+                existingWatchlistItem ?? item,
+                in: library,
+                reduceMotion: reduceMotion
+            )
         } label: {
             Label(
                 existingWatchlistItem == nil ? "Add to Watchlist" : "Remove from Watchlist",
@@ -62,6 +67,7 @@ struct MediaTitleWatchlistAction: View {
 
 struct TMDBTitlePosterActions: View {
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: TrendingTitle
     let onDetails: () -> Void
 
@@ -76,11 +82,11 @@ struct TMDBTitlePosterActions: View {
             Label("Details", systemImage: "info.circle")
         }
         Button {
-            if let existingWatchlistItem {
-                library.toggleWatchlist(existingWatchlistItem)
-            } else {
-                library.toggleWatchlist(.tmdbCatalogItem(from: title))
-            }
+            WatchlistFeedback.toggleTrending(
+                title,
+                in: library,
+                reduceMotion: reduceMotion
+            )
         } label: {
             Label(
                 existingWatchlistItem == nil ? "Add to Watchlist" : "Remove from Watchlist",

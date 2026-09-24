@@ -761,6 +761,12 @@ final class AppEnvironment: ObservableObject {
         )
     }
 
+    func tmdbPersonProfile(id: Int) async throws -> PersonProfile {
+        let token = try tmdbAccessToken()
+        let language = Locale.preferredLanguages.first ?? "en-US"
+        return try await tmdbClient.personProfile(id: id, accessToken: token, language: language)
+    }
+
     private func hasReachedExactReleaseTime(
         show: MediaItem,
         episode: MediaEpisode,

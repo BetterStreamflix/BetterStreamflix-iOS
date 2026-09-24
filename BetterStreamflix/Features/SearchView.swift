@@ -41,7 +41,9 @@ struct SearchView: View {
                 }
                 .padding(.horizontal, 14)
                 .frame(height: 46)
-                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .glassEffectWithFallback(
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
                 .padding(.horizontal, 20)
 
                 if model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -69,7 +71,7 @@ struct SearchView: View {
                                                 .font(.subheadline.weight(.medium))
                                                 .padding(.horizontal, 12)
                                                 .padding(.vertical, 8)
-                                                .background(AppTheme.elevatedSurface, in: Capsule())
+                                                .glassEffectWithFallback(in: Capsule())
                                         }
                                         .buttonStyle(.plain)
                                     }

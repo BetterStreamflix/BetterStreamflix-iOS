@@ -128,6 +128,53 @@ struct CastMember: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let name: String
     let imageURL: URL?
+    /// TMDB person id when the cast row comes from TMDB credits.
+    var tmdbID: Int? = nil
+
+    var canOpenProfile: Bool { tmdbID != nil }
+}
+
+struct PersonProfile: Identifiable, Hashable, Sendable {
+    let id: Int
+    let name: String
+    let biography: String?
+    let birthday: String?
+    let placeOfBirth: String?
+    let knownForDepartment: String?
+    let profileURL: URL?
+    let knownFor: [TrendingTitle]
+    let filmography: [PersonCredit]
+}
+
+struct PersonCredit: Identifiable, Hashable, Sendable {
+    let id: String
+    let tmdbID: Int
+    let kind: MediaKind
+    let title: String
+    let character: String?
+    let job: String?
+    let releaseDate: String?
+    let posterURL: URL?
+    let rating: Double?
+
+    var year: String? {
+        guard let releaseDate, releaseDate.count >= 4 else { return nil }
+        return String(releaseDate.prefix(4))
+    }
+
+    var asTrendingTitle: TrendingTitle {
+        TrendingTitle(
+            id: tmdbID,
+            kind: kind,
+            title: title,
+            overview: "",
+            releaseDate: releaseDate,
+            rating: rating,
+            genreNames: [],
+            posterURL: posterURL,
+            backdropURL: nil
+        )
+    }
 }
 
 struct MediaSeason: Identifiable, Codable, Hashable, Sendable {
