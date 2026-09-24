@@ -180,6 +180,9 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 .listRowBackground(AppTheme.surface)
+
+                ProvidersSettingsSection()
+
                 Section("Playback Languages") {
                     Picker("Anime audio", selection: $animeAudioLanguage) {
                         Text("English").tag("en")
@@ -387,7 +390,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.5"
+        ) as? String ?? "0.0.7"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"
@@ -566,6 +569,7 @@ struct UpdateCheckSheet: View {
     let result: UpdateCheckResult
     let onSkipUpdate: (() -> Void)?
     let onRemindLater: (() -> Void)?
+    @State private var showReleaseHistory = false
 
     init(
         result: UpdateCheckResult,
@@ -590,19 +594,19 @@ struct UpdateCheckSheet: View {
                             title: "You're up to date",
                             message: "BetterStreamflix \(version) (\(build)) matches the newest public feed build."
                         )
-                        primaryCTA(
-                            title: "Browse release history",
-                            systemImage: "safari",
-                            url: SupportLinks.githubReleases
-                        )
                     case .unavailable(let version, let build):
                         statusContent(
                             icon: "wifi.exclamationmark",
                             title: "Couldn't reach the update feed",
-                            message: "You're running BetterStreamflix \(version) (\(build)). Check your connection and try again, or open the Releases page in a browser."
+                            message: "You're running BetterStreamflix \(version) (\(build)). Check your connection and try again, or browse the release history offline via GitHub."
                         )
+                    }
+
+                    browseReleaseHistoryButton
+
+                    if case .unavailable = result {
                         primaryCTA(
-                            title: "Open Releases",
+                            title: "Open Releases on GitHub",
                             systemImage: "safari",
                             url: SupportLinks.githubReleases
                         )
@@ -624,10 +628,28 @@ struct UpdateCheckSheet: View {
                         .foregroundStyle(accentColor)
                 }
             }
+            .sheet(isPresented: $showReleaseHistory) {
+                ReleaseHistorySheet()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(24)
+            }
         }
         .tint(accentColor)
         .presentationBackground { AppScreenBackground() }
         .presentationCornerRadius(24)
+    }
+
+    private var browseReleaseHistoryButton: some View {
+        Button {
+            showReleaseHistory = true
+        } label: {
+            Label("Browse release history", systemImage: "clock.arrow.circlepath")
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(AppPrimaryButtonStyle(glow: accentColor))
+        .accessibilityHint("Opens an in-app list of published releases")
     }
 
     @ViewBuilder
@@ -714,6 +736,117 @@ struct UpdateCheckSheet: View {
     }
 
     private var accentColor: Color { environment.theme.accentBright }
+}
+
+struct ReleaseHistorySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @EnvironmentObject private var environment: AppEnvironment
+
+    @State private var releases: [AppUpdateInfo] = []
+    @State private var isLoading = true
+    @State private var loadFailed = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if isLoading {
+                    ProgressView("Loading releases…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if loadFailed && releases.isEmpty {
+                    ContentUnavailableView(
+                        "Couldn't load history",
+                        systemImage: "wifi.exclamationmark",
+                        description: Text("Check your connection, then try again.")
+                    )
+                } else {
+                    List {
+                        ForEach(releases) { release in
+                            Button {
+                                openURL(release.releasePageUrl)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text("v\(release.version)")
+                                            .font(.headline.weight(.semibold))
+                                            .foregroundStyle(AppTheme.primaryText)
+                                        Text("(\(release.build))")
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundStyle(environment.theme.accentBright)
+                                        Spacer()
+                                        Image(systemName: "arrow.down.app")
+                                            .foregroundStyle(environment.theme.accentBright)
+                                    }
+                                    Text(formattedDate(release.releasedAt))
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                    if !release.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text(release.notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(3)
+                                    }
+                                    Text(release.ipaAssetName)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(environment.theme.accentBright.opacity(0.9))
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .listRowBackground(AppTheme.surface)
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .background { AppScreenBackground() }
+            .navigationTitle("Release History")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        openURL(SupportLinks.githubReleases)
+                    } label: {
+                        Image(systemName: "safari")
+                    }
+                    .accessibilityLabel("Open on GitHub")
+                }
+            }
+            .task { await loadReleases() }
+            .refreshable { await loadReleases() }
+        }
+        .tint(environment.theme.accentBright)
+        .presentationBackground { AppScreenBackground() }
+    }
+
+    private func loadReleases() async {
+        isLoading = releases.isEmpty
+        loadFailed = false
+        do {
+            releases = try await PublicUpdateFeedClient().releases()
+        } catch {
+            loadFailed = true
+            if releases.isEmpty {
+                // Soft fallback: surface the latest feed entry alone when history is missing.
+                if let latest = try? await PublicUpdateFeedClient().latest() {
+                    releases = [latest]
+                    loadFailed = false
+                }
+            }
+        }
+        isLoading = false
+    }
+
+    private func formattedDate(_ raw: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: raw) ?? ISO8601DateFormatter().date(from: raw) {
+            return date.formatted(date: .abbreviated, time: .shortened)
+        }
+        return raw
+    }
 }
 
 struct CreditsSheet: View {

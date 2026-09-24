@@ -1230,9 +1230,13 @@ struct PlayerScreen: View {
                         .combined(with: .opacity)
                 )
                 .zIndex(100)
-            } else if model.isLoading || session.isBuffering {
+            } else if model.isLoading
+                        || session.playbackState == .preparing
+                        || session.playbackState == .recovering {
                 playbackStatusOverlay(
-                    title: "Loading video…",
+                    title: session.playbackState == .recovering
+                        ? "Reconnecting…"
+                        : "Loading video…",
                     subtitle: playbackLoadingSubtitle(
                         for: model.request
                     ),

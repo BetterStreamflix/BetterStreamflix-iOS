@@ -36,8 +36,10 @@ enum DesignTokens {
         static let press = Animation.easeOut(duration: 0.16)
         static let heroCrossfade = Animation.easeInOut(duration: 0.45)
         static let watchlistBounce = Animation.spring(response: 0.38, dampingFraction: 0.55)
+        static let watchlistBurst = Animation.spring(response: 0.48, dampingFraction: 0.52)
         static let toast = Animation.spring(response: 0.42, dampingFraction: 0.82)
         static let glassMorph = Animation.spring(response: 0.45, dampingFraction: 0.78)
+        static let compactHeader = Animation.spring(response: 0.36, dampingFraction: 0.86)
     }
 
     enum Haptics {
@@ -96,14 +98,17 @@ struct AppSurfaceModifier: ViewModifier {
 struct AppPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     let glow: Color
+    var minHeight: CGFloat = 52
+    var horizontalPadding: CGFloat = 18
+    var verticalPadding: CGFloat = 14
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline.weight(.semibold))
             .foregroundStyle(Color(hex: 0x11141C))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            .frame(maxWidth: .infinity, minHeight: minHeight)
             .background {
                 LinearGradient(
                     colors: [Color(hex: 0xF7F9FF), Color(hex: 0xCBD3E1)],

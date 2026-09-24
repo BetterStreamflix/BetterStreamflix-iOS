@@ -19,6 +19,8 @@ struct DetailsView: View {
     @State private var isHeroArtworkLoading = true
     @State private var isTitleLogoResolved = false
     @State private var selectedPerson: CastMember?
+    @State private var heroScrollMinY: CGFloat = 0
+    @State private var myListBurst = false
 
     init(item: MediaItem, tmdbMetadata: TrendingTitle? = nil) {
         _model = StateObject(wrappedValue: DetailsViewModel(
@@ -37,37 +39,65 @@ struct DetailsView: View {
                     detailsTitle
                     detailsMetadata
                     if let overview = model.item.overview { Text(overview).foregroundStyle(.secondary) }
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         Button {
                             guard let request = primaryPlaybackRequest else { return }
                             DesignTokens.Haptics.primaryAction()
                             Task { await beginPlayback(request) }
                         } label: {
                             Label(primaryActionTitle, systemImage: "play.fill")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        .buttonStyle(AppPrimaryButtonStyle(glow: environment.theme.glow))
+                        .buttonStyle(
+                            AppPrimaryButtonStyle(
+                                glow: environment.theme.glow,
+                                minHeight: 40,
+                                horizontalPadding: 14,
+                                verticalPadding: 8
+                            )
+                        )
+                        .frame(height: 40)
                         .disabled(primaryPlaybackRequest == nil)
 
-                        WatchlistToggleButton(
-                            isInWatchlist: library.isInWatchlist(model.item),
-                            action: {
-                                WatchlistFeedback.toggle(
-                                    model.item,
-                                    in: library,
-                                    reduceMotion: reduceMotion,
-                                    toastStore: watchlistToast
-                                )
-                            },
-                            size: 44,
-                            glass: true
-                        )
+                        Button {
+                            myListBurst.toggle()
+                            WatchlistFeedback.toggle(
+                                model.item,
+                                in: library,
+                                reduceMotion: reduceMotion,
+                                toastStore: watchlistToast
+                            )
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: library.isInWatchlist(model.item) ? "checkmark" : "plus")
+                                    .font(.subheadline.weight(.bold))
+                                    .contentTransition(.symbolEffect(.replace))
+                                    .scaleEffect(myListBurst ? 1.18 : 1)
+                                Text("My List")
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(height: 40)
+                        .glassEffectWithFallback(in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(.white.opacity(0.22), lineWidth: 1)
+                        }
+                        .scaleEffect(myListBurst ? 1.04 : 1)
+                        .animation(DesignTokens.Motion.watchlistBurst, value: myListBurst)
                         .accessibilityLabel(
                             library.isInWatchlist(model.item) ? "Remove from My List" : "Add to My List"
                         )
                     }
+                    .frame(height: 40)
 
                     if !model.item.seasons.isEmpty { seasonsSection }
                     if !model.item.cast.isEmpty {
@@ -105,22 +135,8 @@ struct DetailsView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        .overlay(alignment: .topLeading) {
-            // Single floating back control — avoids doubled system/toolbar chrome
-            // and the horizontal nav-bar strip across the hero.
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-                    .glassEffectWithFallback(in: Circle())
-            }
-            .accessibilityLabel("Back")
-            .padding(.leading, 16)
-            .padding(.top, max(ScreenMetrics.topSafeAreaInset - 2, 8))
+        .overlay(alignment: .top) {
+            detailChromeOverlay
         }
         .overlay { if model.isLoading && model.item.overview == nil { ProgressView() } }
         .overlay {
@@ -154,9 +170,8 @@ struct DetailsView: View {
                 isHeroArtworkLoading = false
             }
             let logoTask = Task { @MainActor in
-                // Prefer the title logo as soon as TMDB returns one. Keep trying
-                // after metadata correction so text fallback is only a last resort.
-                if let logo = await loadTitleLogo(for: initialItem) {
+                // Shared cache + same presentation pipeline as Featured.
+                if let logo = await loadTitleLogo(for: initialItem, metadata: model.tmdbMetadata) {
                     tmdbTitleLogoData = logo
                     isTitleLogoResolved = true
                 }
@@ -179,7 +194,7 @@ struct DetailsView: View {
                     for: model.item,
                     environment: environment
                 )
-                async let correctedLogo = loadTitleLogo(for: model.item)
+                async let correctedLogo = loadTitleLogo(for: model.item, metadata: model.tmdbMetadata)
                 if let logo = await correctedLogo {
                     tmdbTitleLogoData = logo
                 }
@@ -303,13 +318,78 @@ struct DetailsView: View {
                 AppHeroFade()
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-
+            .preference(key: DetailsHeroScrollOffsetKey.self, value: minY)
         }
         // The Home carousel intentionally locks to its scroll container. The
         // details hero instead follows the current proposal so a landscape
         // player presentation cannot leave a stale width behind in portrait.
         .frame(maxWidth: .infinity, alignment: .center)
         .modifier(HeroHeightModifier())
+        .onPreferenceChange(DetailsHeroScrollOffsetKey.self) { value in
+            heroScrollMinY = value
+        }
+    }
+
+    private var showsCompactHeader: Bool {
+        -heroScrollMinY > HeroArtworkScrollEffect.compactHeaderRevealDistance
+    }
+
+    private var detailChromeOverlay: some View {
+        let topInset = max(ScreenMetrics.topSafeAreaInset, 47)
+        VStack(spacing: 0) {
+            if showsCompactHeader {
+                HStack(spacing: 10) {
+                    DetailBackControl(action: { dismiss() })
+                    Spacer(minLength: 0)
+                    compactHeaderTitle
+                        .frame(maxWidth: 220)
+                    Spacer(minLength: 0)
+                    Color.clear.frame(width: 40, height: 40)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, topInset + 4)
+                .padding(.bottom, 10)
+                .frame(maxWidth: .infinity)
+                .background {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(.white.opacity(0.08))
+                                .frame(height: 0.5)
+                        }
+                        .ignoresSafeArea(edges: .top)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else {
+                HStack {
+                    DetailBackControl(action: { dismiss() })
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 12)
+                .padding(.top, topInset + 2)
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+        .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactHeader)
+    }
+
+    @ViewBuilder
+    private var compactHeaderTitle: some View {
+        TitleLogoView(
+            title: model.item.title,
+            logoData: tmdbTitleLogoData,
+            showsFallback: isTitleLogoResolved,
+            maximumLogoWidth: 168,
+            maximumLogoHeight: 28
+        ) {
+            Text(model.item.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
     }
 
     private var detailsTitle: some View {
@@ -332,22 +412,50 @@ struct DetailsView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .shadow(color: .black.opacity(0.55), radius: 12, y: 4)
         .accessibilityAddTraits(.isHeader)
+        .opacity(showsCompactHeader ? 0.18 : 1)
+        .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactHeader)
     }
 
-    private func loadTitleLogo(for item: MediaItem) async -> Data? {
-        // Prefer English / textless clear logos first, then the device language,
-        // so Featured-style title treatments show on Detail whenever TMDB has one.
-        let preferred = Locale.preferredLanguages.first ?? "en-US"
-        let languages = ["en-US", preferred]
-            .reduce(into: [String]()) { values, language in
-                if !values.contains(language) { values.append(language) }
-            }
+    private func loadTitleLogo(for item: MediaItem, metadata: TrendingTitle?) async -> Data? {
+        func accepted(_ data: Data?) -> Data? {
+            guard let data,
+                  let image = UIImage(data: data),
+                  image.size.width > 4,
+                  image.size.height > 4 else { return nil }
+            return data
+        }
 
-        for language in languages {
-            if let data = try? await environment.tmdbLogoData(for: item, language: language),
-               let image = UIImage(data: data),
-               image.size.width > 4,
-               image.size.height > 4 {
+        // Featured → Detail parity: read shared in-memory cache first.
+        if let metadata, let cached = accepted(environment.cachedTitleLogo(forKey: metadata.lookupKey)) {
+            return cached
+        }
+        if let key = AppEnvironment.titleLogoKey(for: item),
+           let cached = accepted(environment.cachedTitleLogo(forKey: key)) {
+            return cached
+        }
+
+        let tmdbID = metadata?.id ?? item.tmdbID
+        let kind = metadata?.kind ?? item.kind
+        if let tmdbID {
+            if let logo = accepted(
+                await environment.titlePresentationLogo(
+                    tmdbID: tmdbID,
+                    kind: kind,
+                    fallbackPosterURL: metadata?.posterURL ?? item.posterURL,
+                    fallbackBackdropURL: metadata?.backdropURL ?? item.backdropURL
+                )
+            ) {
+                return logo
+            }
+        }
+
+        // Last resort: language-ordered logo URL path (also fills shared cache).
+        for language in AppEnvironment.logoLanguageCandidates() {
+            if let data = accepted(try? await environment.tmdbLogoData(for: item, language: language)) {
+                return data
+            }
+            if let metadata,
+               let data = accepted(try? await environment.tmdbLogoData(for: metadata, language: language)) {
                 return data
             }
         }
@@ -620,6 +728,8 @@ enum HeroArtworkScrollEffect {
     static let disappearanceDistance: CGFloat = 500
     static let maximumDimming: Double = 0.64
     static let upwardParallaxCompensation: CGFloat = 0.35
+    /// Reveal the compact sticky header once the in-content logo has scrolled past the status bar.
+    static let compactHeaderRevealDistance: CGFloat = 168
 
     static func metrics(minY: CGFloat, reduceMotion: Bool, heroHeight: CGFloat) -> Metrics {
         let upwardScroll = max(0, -minY)
@@ -643,6 +753,39 @@ enum HeroArtworkScrollEffect {
             // cannot bleed behind the page's shelves or detail content.
             clipsToHeroBounds: overscroll == 0
         )
+    }
+}
+
+private struct DetailsHeroScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct DetailBackControl: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .contentShape(Circle())
+                .background {
+                    Circle()
+                        .fill(.black.opacity(0.28))
+                }
+                .glassEffectWithFallback(in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(.white.opacity(0.28), lineWidth: 0.8)
+                }
+                .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back")
     }
 }
 

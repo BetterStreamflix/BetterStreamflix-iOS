@@ -430,6 +430,9 @@ final class DetailsViewModel: ObservableObject {
         self.tmdbMetadataSnapshot = tmdbMetadataSnapshot
     }
 
+    /// TMDB hero metadata used for logo/key parity with Featured.
+    var tmdbMetadata: TrendingTitle? { tmdbMetadataSnapshot }
+
     var orderedSeasons: [MediaSeason] {
         item.seasons.sorted {
             if ($0.number == 0) != ($1.number == 0) { return $1.number == 0 }

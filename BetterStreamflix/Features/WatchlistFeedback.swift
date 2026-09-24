@@ -134,12 +134,13 @@ struct WatchlistToastBanner: View {
         if let toast {
             Label(toast.message, systemImage: toast.isAdded ? "checkmark.circle.fill" : "minus.circle.fill")
                 .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 420)
                 .glassEffectWithFallback(in: Capsule())
                 .foregroundStyle(AppTheme.primaryText)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .padding(.top, 8)
+                .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
                 .allowsHitTesting(false)
         }
     }

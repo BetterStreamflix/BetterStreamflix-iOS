@@ -22,6 +22,7 @@ struct RootView: View {
     @State private var selectedTab: Tab = .home
     @State private var isSearchPresented = false
     @State private var isHomeReady = false
+    @State private var hasCompletedSetup = AppSetupStore.isCompleted
     @State private var pendingAutomaticUpdate: AppUpdateInfo?
     @State private var automaticUpdateRelease: AppUpdateInfo?
     @AppStorage("updates.skippedReleaseTag") private var skippedUpdateTag = ""
@@ -30,62 +31,19 @@ struct RootView: View {
         ZStack {
             AppScreenBackground()
 
-            TabView(selection: $selectedTab) {
-                NavigationStack { HomeView(onInitialLoadCompleted: showHome) }
-                    .environment(\.titleTransitionNamespace, homeTitleTransitionNamespace)
-                    .environment(\.titleTransitionSelection, homeTitleTransitionSelection)
-                    .tabItem { Label("Home", systemImage: "house.fill") }
-                    .tag(Tab.home)
-
-                NavigationStack {
-                    CatalogView(
-                        kind: .movie,
-                        onOpenSearch: { isSearchPresented = true }
-                    )
+            if hasCompletedSetup {
+                mainTabs
+            } else {
+                FirstLaunchSetupView {
+                    withAnimation(reduceMotion ? nil : DesignTokens.Motion.entrance) {
+                        hasCompletedSetup = true
+                    }
                 }
-                .environment(\.titleTransitionNamespace, movieTitleTransitionNamespace)
-                .environment(\.titleTransitionSelection, movieTitleTransitionSelection)
-                .tabItem { Label("Movies", systemImage: "film.fill") }
-                .tag(Tab.movies)
-
-                NavigationStack {
-                    CatalogView(
-                        kind: .series,
-                        onOpenSearch: { isSearchPresented = true }
-                    )
-                }
-                .environment(\.titleTransitionNamespace, seriesTitleTransitionNamespace)
-                .environment(\.titleTransitionSelection, seriesTitleTransitionSelection)
-                .tabItem { Label("Series", systemImage: "tv.fill") }
-                .tag(Tab.series)
-
-                NavigationStack { LibraryView() }
-                    .environment(\.titleTransitionNamespace, libraryTitleTransitionNamespace)
-                    .environment(\.titleTransitionSelection, libraryTitleTransitionSelection)
-                    .tabItem { Label("Library", systemImage: "bookmark.fill") }
-                    .tag(Tab.library)
-
-                MoreView(onOpenSearch: { isSearchPresented = true })
-                    .environment(\.titleTransitionNamespace, moreTitleTransitionNamespace)
-                    .environment(\.titleTransitionSelection, moreTitleTransitionSelection)
-                    .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
-                    .tag(Tab.more)
-            }
-            .tint(environment.theme.accent)
-            .toolbar(.visible, for: .tabBar)
-            .overlay(alignment: .top) {
-                SourceLookupStatusOverlay()
-                    .safeAreaPadding(.top, 8)
-                    .zIndex(100)
-            }
-            .overlay(alignment: .top) {
-                WatchlistToastBanner(toast: watchlistToast.toast)
-                    .safeAreaPadding(.top, 8)
-                    .animation(DesignTokens.Motion.toast, value: watchlistToast.toast)
-                    .zIndex(110)
+                .transition(.opacity)
+                .zIndex(50)
             }
 
-            if !isHomeReady {
+            if hasCompletedSetup, !isHomeReady {
                 SplashScreen()
                     .transition(.opacity)
                     .zIndex(200)
@@ -94,13 +52,20 @@ struct RootView: View {
         .fullScreenCover(isPresented: $isSearchPresented) {
             SearchPresentationView()
         }
-        .task { await environment.refreshContinueWatchingForNewEpisodes() }
+        .task(id: hasCompletedSetup) {
+            guard hasCompletedSetup else { return }
+            await environment.refreshContinueWatchingForNewEpisodes()
+        }
         .task(id: isHomeReady) {
             guard isHomeReady else { return }
             await environment.preloadPrimaryNavigationArtwork()
         }
-        .task { await checkForUpdatesAtLaunch() }
-        .task {
+        .task(id: hasCompletedSetup) {
+            guard hasCompletedSetup else { return }
+            await checkForUpdatesAtLaunch()
+        }
+        .task(id: hasCompletedSetup) {
+            guard hasCompletedSetup else { return }
             do {
                 try await Task.sleep(for: .seconds(8))
             } catch {
@@ -109,7 +74,7 @@ struct RootView: View {
             showHome()
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active, hasCompletedSetup else { return }
             Task { await environment.refreshContinueWatchingForNewEpisodes() }
         }
         .onChange(of: isHomeReady) { _, isReady in
@@ -131,6 +96,65 @@ struct RootView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(24)
+        }
+    }
+
+    private var mainTabs: some View {
+        TabView(selection: $selectedTab) {
+            NavigationStack { HomeView(onInitialLoadCompleted: showHome) }
+                .environment(\.titleTransitionNamespace, homeTitleTransitionNamespace)
+                .environment(\.titleTransitionSelection, homeTitleTransitionSelection)
+                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(Tab.home)
+
+            NavigationStack {
+                CatalogView(
+                    kind: .movie,
+                    onOpenSearch: { isSearchPresented = true }
+                )
+            }
+            .environment(\.titleTransitionNamespace, movieTitleTransitionNamespace)
+            .environment(\.titleTransitionSelection, movieTitleTransitionSelection)
+            .tabItem { Label("Movies", systemImage: "film.fill") }
+            .tag(Tab.movies)
+
+            NavigationStack {
+                CatalogView(
+                    kind: .series,
+                    onOpenSearch: { isSearchPresented = true }
+                )
+            }
+            .environment(\.titleTransitionNamespace, seriesTitleTransitionNamespace)
+            .environment(\.titleTransitionSelection, seriesTitleTransitionSelection)
+            .tabItem { Label("Series", systemImage: "tv.fill") }
+            .tag(Tab.series)
+
+            NavigationStack { LibraryView() }
+                .environment(\.titleTransitionNamespace, libraryTitleTransitionNamespace)
+                .environment(\.titleTransitionSelection, libraryTitleTransitionSelection)
+                .tabItem { Label("Library", systemImage: "bookmark.fill") }
+                .tag(Tab.library)
+
+            MoreView(onOpenSearch: { isSearchPresented = true })
+                .environment(\.titleTransitionNamespace, moreTitleTransitionNamespace)
+                .environment(\.titleTransitionSelection, moreTitleTransitionSelection)
+                .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
+                .tag(Tab.more)
+        }
+        .tint(environment.theme.accent)
+        .toolbar(.visible, for: .tabBar)
+        .overlay(alignment: .top) {
+            SourceLookupStatusOverlay()
+                .safeAreaPadding(.top, 8)
+                .zIndex(100)
+        }
+        .overlay(alignment: .bottom) {
+            WatchlistToastBanner(toast: watchlistToast.toast)
+                .padding(.horizontal, 20)
+                .safeAreaPadding(.bottom, 10)
+                .padding(.bottom, 56)
+                .animation(DesignTokens.Motion.toast, value: watchlistToast.toast)
+                .zIndex(110)
         }
     }
 

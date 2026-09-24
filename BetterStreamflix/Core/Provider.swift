@@ -45,9 +45,21 @@ actor ProviderRegistry {
     }
 
     func playbackProviders() -> [any PlaybackProvider] {
-        providers.values.sorted { $0.id < $1.id }.map { StreamingCommunityPlaybackProvider(provider: $0) as any PlaybackProvider }
-            + [AnimePlaybackProvider(site: .hiAnime), AnimePlaybackProvider(site: .anikoto), AnimeILPlaybackProvider(),
-               StremioPlaybackProvider()]
+        let streaming = providers.values
+            .sorted { $0.id < $1.id }
+            .map { StreamingCommunityPlaybackProvider(provider: $0) as any PlaybackProvider }
+        let extras: [any PlaybackProvider] = [
+            AnimePlaybackProvider(site: .hiAnime),
+            AnimePlaybackProvider(site: .anikoto),
+            AnimeILPlaybackProvider(),
+            StremioPlaybackProvider(),
+        ]
+        return (streaming + extras).filter { provider in
+            PlaybackSourcePreferenceID.allCases.contains { preference in
+                preference.matches(providerID: provider.id)
+                    && AppSetupStore.isPlaybackSourceEnabled(preference)
+            }
+        }
     }
 
     func all() -> [any MediaProvider] {

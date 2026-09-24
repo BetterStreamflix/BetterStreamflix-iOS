@@ -18,6 +18,11 @@ struct AppUpdateInfo: Identifiable, Equatable, Sendable, Codable {
     static let publicFeedURL = URL(
         string: "https://raw.githubusercontent.com/BetterStreamflix/BetterStreamflix-update-feed/main/ios/latest.json"
     )!
+
+    /// Public release history the in-app browser sheet reads without a token.
+    static let publicReleasesURL = URL(
+        string: "https://raw.githubusercontent.com/BetterStreamflix/BetterStreamflix-update-feed/main/ios/releases.json"
+    )!
 }
 
 enum AppUpdateOutcome: Equatable, Sendable {
@@ -30,13 +35,16 @@ enum AppUpdateOutcome: Equatable, Sendable {
 struct PublicUpdateFeedClient: Sendable {
     private let client: any HTTPClientProtocol
     private let feedURL: URL
+    private let releasesURL: URL
 
     init(
         client: any HTTPClientProtocol = HTTPClient(),
-        feedURL: URL = AppUpdateInfo.publicFeedURL
+        feedURL: URL = AppUpdateInfo.publicFeedURL,
+        releasesURL: URL = AppUpdateInfo.publicReleasesURL
     ) {
         self.client = client
         self.feedURL = feedURL
+        self.releasesURL = releasesURL
     }
 
     func latest() async throws -> AppUpdateInfo {
@@ -47,6 +55,25 @@ struct PublicUpdateFeedClient: Sendable {
         request.setValue("BetterStreamflix-iOS", forHTTPHeaderField: "User-Agent")
         let response = try await client.data(for: request)
         return try JSONDecoder().decode(AppUpdateInfo.self, from: response.data)
+    }
+
+    func releases() async throws -> [AppUpdateInfo] {
+        var request = URLRequest(url: releasesURL)
+        request.timeoutInterval = 20
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("BetterStreamflix-iOS", forHTTPHeaderField: "User-Agent")
+        let response = try await client.data(for: request)
+        let decoded = try JSONDecoder().decode([AppUpdateInfo].self, from: response.data)
+        return decoded.sorted { lhs, rhs in
+            if let left = Version(lhs.tagName), let right = Version(rhs.tagName), left != right {
+                return left > right
+            }
+            if lhs.version != rhs.version {
+                return lhs.version.compare(rhs.version, options: .numeric) == .orderedDescending
+            }
+            return (Int(lhs.build) ?? 0) > (Int(rhs.build) ?? 0)
+        }
     }
 }
 

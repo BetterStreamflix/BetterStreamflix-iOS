@@ -367,6 +367,9 @@ final class AppEnvironment: ObservableObject {
     private var decodedImageTasks: [URL: Task<UIImage, Error>] = [:]
     private var tmdbPageCache: [TMDBPageCacheKey: TMDBTitlePage] = [:]
     private var tmdbPageTasks: [TMDBPageCacheKey: Task<TMDBTitlePage, Error>] = [:]
+    /// Shared clear-logo bytes keyed by `kind:tmdbID` so Featured and Detail never diverge.
+    private var titleLogoDataByKey: [String: Data] = [:]
+    private var titleLogoTasks: [String: Task<Data?, Never>] = [:]
 
     @Published var theme: AppTheme {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "appearance.themeColor") }
@@ -528,37 +531,115 @@ final class AppEnvironment: ObservableObject {
     }
 
     func tmdbLogoData(for title: TrendingTitle, language: String? = nil) async throws -> Data? {
+        let key = title.lookupKey
+        if let cached = titleLogoDataByKey[key] { return cached }
         let token = try tmdbAccessToken()
-        let resolvedLanguage = language ?? Locale.preferredLanguages.first ?? "en-US"
-        return try await tmdbClient.logoData(
+        let resolvedLanguage = language ?? "en-US"
+        let data = try await tmdbClient.logoData(
             for: title,
             accessToken: token,
             language: resolvedLanguage
         )
+        if let data { titleLogoDataByKey[key] = data }
+        return data
     }
 
     func tmdbLogoData(for item: MediaItem, language: String? = nil) async throws -> Data? {
+        let key = Self.titleLogoKey(for: item)
+        if let key, let cached = titleLogoDataByKey[key] { return cached }
         let token = try tmdbAccessToken()
-        let resolvedLanguage = language ?? Locale.preferredLanguages.first ?? "en-US"
-        return try await tmdbClient.logoData(
+        let resolvedLanguage = language ?? "en-US"
+        let data = try await tmdbClient.logoData(
             for: item,
             accessToken: token,
             language: resolvedLanguage
         )
+        if let key, let data { titleLogoDataByKey[key] = data }
+        return data
+    }
+
+    /// Same presentation pipeline Featured uses — preferred for Detail so logos match.
+    func titlePresentationLogo(
+        tmdbID: Int,
+        kind: MediaKind,
+        fallbackPosterURL: URL? = nil,
+        fallbackBackdropURL: URL? = nil
+    ) async -> Data? {
+        let key = "\(kind.rawValue):\(tmdbID)"
+        if let cached = titleLogoDataByKey[key] { return cached }
+        if let existing = titleLogoTasks[key] {
+            return await existing.value
+        }
+        let task = Task<Data?, Never> {
+            guard let token = try? self.tmdbAccessToken() else { return nil }
+            for language in Self.logoLanguageCandidates() {
+                let presentation = try? await self.tmdbClient.titlePresentationAssets(
+                    tmdbID: tmdbID,
+                    kind: kind,
+                    accessToken: token,
+                    language: language,
+                    fallbackPosterURL: fallbackPosterURL,
+                    fallbackBackdropURL: fallbackBackdropURL
+                )
+                if let logo = presentation?.logo {
+                    self.titleLogoDataByKey[key] = logo
+                    return logo
+                }
+            }
+            return nil
+        }
+        titleLogoTasks[key] = task
+        let value = await task.value
+        titleLogoTasks[key] = nil
+        return value
+    }
+
+    func storeTitleLogos(from assets: TMDBCarouselAssets) {
+        for (key, data) in assets.logoDataByKey {
+            titleLogoDataByKey[key] = data
+        }
+    }
+
+    func cachedTitleLogo(forKey key: String) -> Data? {
+        titleLogoDataByKey[key]
+    }
+
+    static func titleLogoKey(for item: MediaItem) -> String? {
+        guard let tmdbID = item.tmdbID else { return nil }
+        return "\(item.kind.rawValue):\(tmdbID)"
+    }
+
+    static func logoLanguageCandidates() -> [String] {
+        let preferred = Locale.preferredLanguages.first ?? "en-US"
+        return ["en-US", preferred].reduce(into: [String]()) { values, language in
+            if !values.contains(language) { values.append(language) }
+        }
     }
 
     func preloadCarouselAssets(
         for titles: [TrendingTitle],
-        timeout: Duration = .seconds(7)
+        timeout: Duration = .seconds(8)
     ) async -> TMDBCarouselAssets {
         guard let token = try? tmdbAccessToken() else { return TMDBCarouselAssets() }
-        let language = Locale.preferredLanguages.first ?? "en-US"
-        return await tmdbClient.carouselAssets(
-            for: titles,
-            accessToken: token,
-            language: language,
-            timeout: timeout
-        )
+        // Prefer English title logos (same ranking Featured/Detail share).
+        var assets = TMDBCarouselAssets()
+        for language in Self.logoLanguageCandidates() {
+            let batch = await tmdbClient.carouselAssets(
+                for: titles,
+                accessToken: token,
+                language: language,
+                timeout: timeout
+            )
+            for (key, data) in batch.artworkDataByKey where assets.artworkDataByKey[key] == nil {
+                assets.artworkDataByKey[key] = data
+            }
+            for (key, data) in batch.logoDataByKey where assets.logoDataByKey[key] == nil {
+                assets.logoDataByKey[key] = data
+            }
+            if assets.logoDataByKey.count >= titles.count { break }
+        }
+        storeTitleLogos(from: assets)
+        return assets
     }
 
     func tmdbTitleMetadata(for item: MediaItem) async throws -> TrendingTitle? {

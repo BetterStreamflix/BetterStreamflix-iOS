@@ -99,6 +99,37 @@ struct UpdateFeedClientTests {
         #expect(info.build == "12")
         #expect(info.tagName == "v0.0.1")
         #expect(AppUpdateInfo.publicFeedURL.host == "raw.githubusercontent.com")
+        #expect(AppUpdateInfo.publicReleasesURL.lastPathComponent == "releases.json")
+    }
+
+    @Test("Parses and sorts the public release history feed")
+    func parsesReleaseHistory() async throws {
+        let transport = FeedRecordingTransport(data: Data(
+            """
+            [
+              {
+                "version": "0.0.5",
+                "build": "11",
+                "releasedAt": "2026-09-23T08:00:00Z",
+                "notes": "older",
+                "releasePageUrl": "https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases/tag/v0.0.5",
+                "ipaAssetName": "BetterStreamflix-0.0.5-unsigned.ipa"
+              },
+              {
+                "version": "0.0.7",
+                "build": "14",
+                "releasedAt": "2026-09-24T11:00:00Z",
+                "notes": "newest",
+                "releasePageUrl": "https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases/tag/v0.0.7",
+                "ipaAssetName": "BetterStreamflix-0.0.7-unsigned.ipa"
+              }
+            ]
+            """.utf8
+        ))
+        let releases = try await PublicUpdateFeedClient(client: transport).releases()
+        #expect(releases.count == 2)
+        #expect(releases.first?.version == "0.0.7")
+        #expect(releases.first?.build == "14")
     }
 }
 

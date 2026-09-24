@@ -315,41 +315,33 @@ struct TrendingHeroCarousel: View {
                         if isCurrentTitleResolving {
                             ProgressView().tint(.black)
                         } else {
-                            Text("View Details")
+                            Label("View Details", systemImage: "info.circle.fill")
+                                .labelStyle(.titleAndIcon)
                         }
                     }
-                    .font(.headline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.white)
-                .foregroundStyle(.black)
+                .buttonStyle(
+                    AppPrimaryButtonStyle(
+                        glow: .white.opacity(0.35),
+                        minHeight: 44,
+                        horizontalPadding: 14,
+                        verticalPadding: 10
+                    )
+                )
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .clipShape(Capsule())
-                .contentShape(Capsule())
+                .frame(height: 44)
                 .allowsHitTesting(!isCurrentTitleResolving)
 
-                Button {
+                FeaturedAddToListButton(
+                    isInWatchlist: isCurrentTitleInWatchlist,
+                    isDisabled: isCurrentTitleResolving
+                ) {
                     onToggleWatchlist(currentTitle)
-                } label: {
-                    Image(systemName: isCurrentTitleInWatchlist ? "checkmark" : "plus")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .glassEffectWithFallback(in: Capsule())
-                .contentShape(Capsule())
-                .accessibilityLabel(
-                    isCurrentTitleInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"
-                )
-                .allowsHitTesting(!isCurrentTitleResolving)
             }
-            .frame(height: 48)
+            .frame(height: 44)
             .padding(.horizontal, 16)
 
         }
@@ -452,9 +444,68 @@ struct TrendingHeroCarousel: View {
 
 }
 
+struct FeaturedAddToListButton: View {
+    let isInWatchlist: Bool
+    var isDisabled: Bool = false
+    let action: () -> Void
+
+    @State private var pulse = false
+    @State private var ring = false
+
+    var body: some View {
+        Button {
+            guard !isDisabled else { return }
+            pulse.toggle()
+            ring = true
+            action()
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(520))
+                ring = false
+            }
+        } label: {
+            ZStack {
+                if ring {
+                    Capsule()
+                        .stroke(.white.opacity(0.55), lineWidth: 2)
+                        .scaleEffect(pulse ? 1.16 : 1)
+                        .opacity(pulse ? 0 : 0.85)
+                }
+
+                HStack(spacing: 7) {
+                    Image(systemName: isInWatchlist ? "checkmark" : "plus")
+                        .font(.subheadline.weight(.bold))
+                        .contentTransition(.symbolEffect(.replace))
+                        .scaleEffect(pulse ? 1.22 : 1)
+                    Text(isInWatchlist ? "In My List" : "Add to List")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
+        .glassEffectWithFallback(in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.24), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.28), radius: 10, y: 3)
+        .scaleEffect(pulse ? 1.05 : 1)
+        .animation(DesignTokens.Motion.watchlistBurst, value: pulse)
+        .animation(DesignTokens.Motion.watchlistBurst, value: isInWatchlist)
+        .accessibilityLabel(isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist")
+        .allowsHitTesting(!isDisabled)
+    }
+}
+
 struct TitleLogoView<Fallback: View>: View {
-    private let maximumLogoWidth: CGFloat = 320
-    private let maximumLogoHeight: CGFloat = 96
+    private let maximumLogoWidth: CGFloat
+    private let maximumLogoHeight: CGFloat
 
     let title: String
     let logoData: Data?
@@ -465,11 +516,15 @@ struct TitleLogoView<Fallback: View>: View {
         title: String,
         logoData: Data?,
         showsFallback: Bool,
+        maximumLogoWidth: CGFloat = 320,
+        maximumLogoHeight: CGFloat = 96,
         @ViewBuilder fallback: () -> Fallback
     ) {
         self.title = title
         self.logoData = logoData
         self.showsFallback = showsFallback
+        self.maximumLogoWidth = maximumLogoWidth
+        self.maximumLogoHeight = maximumLogoHeight
         self.fallback = fallback()
     }
 

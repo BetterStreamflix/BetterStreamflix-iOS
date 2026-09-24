@@ -299,8 +299,7 @@ final class PlayerSession: ObservableObject {
     @Published private(set) var playbackRate: Double = 1
     @Published private(set) var isBuffering = false
     @Published private(set) var playbackErrorMessage: String?
-
-    private(set) var playbackState: PlaybackSessionState = .idle
+    @Published private(set) var playbackState: PlaybackSessionState = .idle
 
     var onEnded: (() -> Void)?
     var onSourceRefreshNeeded: (() async -> Bool)?
@@ -367,6 +366,8 @@ final class PlayerSession: ObservableObject {
     private var automaticSourceRefreshAttempts = 0
     private var recoveryBaselinePosition = 0.0
     private var lastObservedBufferEnd = 0.0
+    /// Cooldown so a flapping error log cannot thrash through refresh attempts.
+    private var lastItemFailureAt: Date?
     private var stagnantBufferChecks = 0
     private var seekRecoveryGraceUntil: Date?
     private var playbackSeekState = PlaybackSeekState()
@@ -981,9 +982,11 @@ final class PlayerSession: ObservableObject {
         playbackErrorMessage = nil
         automaticSourceRefreshAttempts = 0
         sourceRefreshRequestedForURL = nil
+        lastItemFailureAt = nil
         playbackWasRequested = true
         shouldResumeAfterBuffering = true
         isBuffering = true
+        playbackState = .recovering
         requestSourceRefresh()
     }
 
@@ -2471,10 +2474,15 @@ final class PlayerSession: ObservableObject {
         // A signed HLS item can fail while paused. AVPlayer does not publish the
         // same status transition again when its system Play button is pressed,
         // leaving the crossed-out play icon stuck unless we replace the item.
+        if let lastItemFailureAt, Date().timeIntervalSince(lastItemFailureAt) < 1.2 {
+            return
+        }
+        lastItemFailureAt = Date()
         let shouldContinuePlaying = playbackWasRequested || shouldResumeAfterBuffering
         isPreparingPlayback = false
         shouldResumeAfterBuffering = shouldContinuePlaying
         isBuffering = shouldContinuePlaying
+        playbackErrorMessage = nil
         requestSourceRefresh()
     }
 
@@ -2571,7 +2579,7 @@ final class PlayerSession: ObservableObject {
         isBuffering = false
         playbackState = .failed
         player.pause()
-        playbackErrorMessage = "The video stream stopped responding. Check your connection and try again."
+        playbackErrorMessage = "Playback stalled. Check your connection, then tap Retry to resume from where you left off."
         publishNowPlayingInfo()
     }
 
@@ -3345,11 +3353,11 @@ enum PlaybackRecoveryAction: Equatable, Sendable {
 }
 
 enum PlaybackRecoveryPolicy {
-    static let watchdogInterval: Duration = .seconds(10)
-    static let minimumBufferGrowth = 0.5
-    static let seekGracePeriod: TimeInterval = 15
-    static let stagnantChecksBeforeRecovery = 6
-    static let maximumSourceRefreshes = 3
+    static let watchdogInterval: Duration = .seconds(8)
+    static let minimumBufferGrowth = 0.35
+    static let seekGracePeriod: TimeInterval = 12
+    static let stagnantChecksBeforeRecovery = 5
+    static let maximumSourceRefreshes = 4
 
     static func action(
         trigger: PlaybackRecoveryTrigger,

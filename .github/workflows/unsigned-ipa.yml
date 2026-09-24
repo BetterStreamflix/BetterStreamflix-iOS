@@ -162,6 +162,7 @@ jobs:
           }, indent=2) + "\n")
           PY
           )"
+          export PAYLOAD_JSON="$PAYLOAD"
 
           publish_feed() {
             local repo="$1"
@@ -171,9 +172,31 @@ jobs:
             git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/BetterStreamflix/${repo}.git" "$WORK"
             mkdir -p "$WORK/ios"
             printf '%s' "$PAYLOAD" > "$WORK/ios/latest.json"
+            FEED_WORK="$WORK" python3 - <<'PY'
+          import json, os, pathlib
+          work = pathlib.Path(os.environ["FEED_WORK"])
+          latest = json.loads(os.environ["PAYLOAD_JSON"])
+          history_path = work / "ios" / "releases.json"
+          existing = []
+          if history_path.exists():
+              try:
+                  loaded = json.loads(history_path.read_text())
+                  if isinstance(loaded, list):
+                      existing = loaded
+              except Exception:
+                  existing = []
+          key = (latest.get("version"), latest.get("build"))
+          existing = [
+              item for item in existing
+              if (item.get("version"), item.get("build")) != key
+          ]
+          existing.insert(0, latest)
+          history_path.write_text(json.dumps(existing, indent=2) + "\n")
+          PY
+
             git -C "$WORK" config user.name "BetterStreamflix"
             git -C "$WORK" config user.email "333210020+BetterStreamflix@users.noreply.github.com"
-            git -C "$WORK" add ios/latest.json
+            git -C "$WORK" add ios/latest.json ios/releases.json
             if git -C "$WORK" diff --cached --quiet; then
               echo "${label} feed already current"
             else
