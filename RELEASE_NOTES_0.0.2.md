@@ -4,7 +4,7 @@ Premium Update 2. Unsigned IPA for sideloading — install with your own signing
 
 ### Named fixes
 
-- **Liquid Glass** — deployment target **iOS 26**; glass chrome on hero actions, watchlist controls, search, library empty states, player clusters, and person profiles
+- **Liquid Glass** — glass-style material chrome on hero actions, watchlist controls, search, library empty states, player clusters, and person profiles (system `glassEffect` wires in when building with an iOS 26+ SDK)
 - **Splash** — logo-only BetterStreamflix mark on a full-bleed brand background (no wordmark, no side letterboxing)
 - **About CTAs** — full-width branded capsules for Buy me a coffee (yellow), Telegram, Discord, and Patreon; GitHub stays a quieter row; Credits keep text links
 - **Featured (+) watchlist** — shared bounce / glass morph, haptics, and “Added to Library” toast; same helper on Detail My List and poster menus

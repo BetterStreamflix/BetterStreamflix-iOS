@@ -2,7 +2,7 @@ name: BetterStreamflix
 options:
   bundleIdPrefix: com.betterstreamflix
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "18.0"
 settings:
   base:
     SWIFT_VERSION: "5.10"

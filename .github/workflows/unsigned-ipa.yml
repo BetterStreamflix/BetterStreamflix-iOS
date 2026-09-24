@@ -33,9 +33,30 @@ jobs:
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          set -euo pipefail
+          # Prefer the newest installed Xcode (iOS 26+ SDK when the runner has it).
+          CANDIDATES=(
+            "/Applications/Xcode_26.0.app"
+            "/Applications/Xcode_26.app"
+            "/Applications/Xcode-beta.app"
+            "/Applications/Xcode.app"
+          )
+          SELECTED=""
+          for path in "${CANDIDATES[@]}"; do
+            if [[ -d "$path/Contents/Developer" ]]; then
+              SELECTED="$path"
+              break
+            fi
+          done
+          if [[ -z "$SELECTED" ]]; then
+            echo "No Xcode app found under /Applications" >&2
+            ls /Applications || true
+            exit 1
+          fi
+          sudo xcode-select -s "$SELECTED/Contents/Developer"
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
+          ls /Applications | grep -i xcode || true
 
       - name: Resolve version and build
         id: meta

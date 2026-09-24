@@ -4,8 +4,8 @@ Native SwiftUI client for BetterStreamflix — browse, detail, playback, library
 
 ## Requirements
 
-- macOS with Xcode that ships the **iOS 26** SDK
-- iOS / iPadOS 26+
+- macOS with Xcode 16.4+ (iOS 18 SDK; iOS 26 SDK enables system Liquid Glass APIs)
+- iOS / iPadOS 18+
 - Apple Developer account for physical-device installs
 
 No third-party Swift packages are required.

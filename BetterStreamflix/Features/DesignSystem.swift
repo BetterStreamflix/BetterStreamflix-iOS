@@ -41,18 +41,22 @@ enum DesignTokens {
     }
 
     enum Haptics {
+        @MainActor
         static func watchlistAdded() {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
 
+        @MainActor
         static func watchlistRemoved() {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
 
+        @MainActor
         static func primaryAction() {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
 
+        @MainActor
         static func selection() {
             UISelectionFeedbackGenerator().selectionChanged()
         }
@@ -318,14 +322,15 @@ extension View {
         modifier(PressablePosterModifier())
     }
 
-    /// Applies Liquid Glass when available; otherwise a soft material fallback.
-    @ViewBuilder
+    /// Liquid Glass–ready chrome. Soft interactive material that reads as glass on
+    /// current SDKs; when building with an iOS 26+ SDK / Xcode that ships
+    /// `glassEffect`, swap this helper to the system Liquid Glass APIs.
     func glassEffectWithFallback(in shape: some Shape = .capsule) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular.interactive(), in: shape)
-        } else {
-            self.background(.ultraThinMaterial, in: shape)
-        }
+        self
+            .background(.ultraThinMaterial, in: shape)
+            .overlay {
+                shape.stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+            }
     }
 
     func errorAlert(_ message: Binding<String?>) -> some View {
@@ -361,14 +366,12 @@ struct PressablePosterModifier: ViewModifier {
 }
 
 struct HeroGlassClusterModifier: ViewModifier {
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 12) {
-                content
+        content
+            .padding(6)
+            .background(.ultraThinMaterial.opacity(0.35), in: Capsule())
+            .overlay {
+                Capsule().stroke(Color.white.opacity(0.1), lineWidth: 0.8)
             }
-        } else {
-            content
-        }
     }
 }
