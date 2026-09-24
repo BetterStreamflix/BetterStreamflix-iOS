@@ -657,7 +657,26 @@ struct TMDBClientTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let imageData = decodableTestImageData
-        let transport = RecordingTMDBTransport(data: imageData)
+        let imagesJSON = Data(
+            """
+            {
+              "logos": [],
+              "posters": [
+                {
+                  "file_path": "/direct-poster.jpg",
+                  "iso_639_1": null,
+                  "vote_average": 8.0,
+                  "width": 1000
+                }
+              ],
+              "backdrops": []
+            }
+            """.utf8
+        )
+        let transport = RoutingTMDBTransport(handlers: [
+            (.pathContains("/images"), { _ in imagesJSON }),
+            (.hostEquals("image.tmdb.org"), { _ in imageData }),
+        ])
         let client = TMDBClient(
             client: transport,
             imageCache: TMDBImageCache(directoryURL: directory)
@@ -676,22 +695,55 @@ struct TMDBClientTests {
 
         let firstData = try await client.heroArtworkData(for: item, accessToken: "secret-token")
         let secondData = try await client.heroArtworkData(for: item, accessToken: "secret-token")
-        let lastRequest = await transport.lastRequest
         let requestCount = await transport.requestCount
+        let imageRequests = await transport.requests.filter {
+            $0.url?.host == "image.tmdb.org"
+        }
 
         #expect(firstData == imageData)
         #expect(secondData == imageData)
-        #expect(lastRequest?.url == posterURL)
-        #expect(requestCount == 1)
+        #expect(imageRequests.count == 1)
+        #expect(imageRequests.first?.url == posterURL)
+        #expect(requestCount == 2)
     }
 
-    @Test("Hero artwork matches the carousel poster and falls back when it is invalid")
+    @Test("Hero artwork prefers textless stills, then falls back when invalid")
     func heroArtworkFallback() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
+        let imagesJSON = Data(
+            """
+            {
+              "logos": [
+                {
+                  "file_path": "/logo.png",
+                  "iso_639_1": "en",
+                  "vote_average": 9.0,
+                  "width": 800
+                }
+              ],
+              "posters": [
+                {
+                  "file_path": "/textless-poster.jpg",
+                  "iso_639_1": null,
+                  "vote_average": 7.0,
+                  "width": 1000
+                },
+                {
+                  "file_path": "/titled-poster.jpg",
+                  "iso_639_1": "en",
+                  "vote_average": 9.0,
+                  "width": 1000
+                }
+              ],
+              "backdrops": []
+            }
+            """.utf8
+        )
         let transport = SequencedTMDBTransport(responses: [
+            imagesJSON,
             Data("not-an-image".utf8),
             decodableTestImageData,
         ])
@@ -719,7 +771,10 @@ struct TMDBClientTests {
         let requests = await transport.requests
 
         #expect(data == decodableTestImageData)
-        #expect(requests.map(\.url) == [posterURL, backdropURL])
+        #expect(requests.count == 3)
+        #expect(requests[0].url?.path == "/3/tv/404/images")
+        #expect(requests[1].url?.absoluteString == "https://image.tmdb.org/t/p/original/textless-poster.jpg")
+        #expect(requests[2].url?.absoluteString == "https://image.tmdb.org/t/p/original/titled-poster.jpg")
     }
 
     @Test("An invalid cached response is evicted and downloaded again")
@@ -882,6 +937,50 @@ private actor SequencedTMDBTransport: HTTPClientProtocol {
         let data = responses.removeFirst()
         let response = HTTPURLResponse(
             url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        return HTTPResponse(data: data, response: response)
+    }
+}
+
+private enum TMDBRouteMatcher: Hashable, Sendable {
+    case pathContains(String)
+    case hostEquals(String)
+}
+
+private actor RoutingTMDBTransport: HTTPClientProtocol {
+    private let handlers: [(TMDBRouteMatcher, @Sendable (URLRequest) -> Data)]
+    private(set) var requests: [URLRequest] = []
+    private(set) var requestCount = 0
+
+    init(handlers: [(TMDBRouteMatcher, @Sendable (URLRequest) -> Data)]) {
+        self.handlers = handlers
+    }
+
+    func data(for request: URLRequest) async throws -> HTTPResponse {
+        requestCount += 1
+        requests.append(request)
+        guard let url = request.url else { throw AppError.invalidURL }
+        for (matcher, handler) in handlers {
+            switch matcher {
+            case .pathContains(let fragment):
+                if url.path.contains(fragment) {
+                    return response(data: handler(request), url: url)
+                }
+            case .hostEquals(let host):
+                if url.host == host {
+                    return response(data: handler(request), url: url)
+                }
+            }
+        }
+        throw AppError.invalidResponse
+    }
+
+    private func response(data: Data, url: URL) -> HTTPResponse {
+        let response = HTTPURLResponse(
+            url: url,
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil

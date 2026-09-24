@@ -484,6 +484,29 @@ actor TMDBClient {
     ) async throws -> Data? {
         var attemptedURLs = Set<URL>()
 
+        // Prefer textless TMDB stills when a title logo is available so the logo
+        // can render fully without competing with baked-in poster typography.
+        if let tmdbID = item.tmdbID,
+           let images = try? await imagesPayload(
+                tmdbID: tmdbID,
+                kind: item.kind,
+                accessToken: accessToken,
+                language: language
+           ) {
+            let preferredLanguage = Self.imageLanguageCode(from: language)
+            let hasLogo = images.preferredLogoURL(language: preferredLanguage) != nil
+            var preferred: [URL] = []
+            if hasLogo {
+                preferred.append(contentsOf: images.preferredTextlessHeroURLs())
+            }
+            preferred.append(contentsOf: images.preferredHeroURLs(language: preferredLanguage))
+            let preferredResult = await firstLoadableImage(from: preferred, excluding: attemptedURLs)
+            attemptedURLs = preferredResult.attemptedURLs
+            if let data = preferredResult.data {
+                return data
+            }
+        }
+
         let directTMDBURLs = [item.posterURL, item.backdropURL]
             .compactMap { $0 }
             .filter { $0.host?.lowercased() == "image.tmdb.org" }
@@ -544,7 +567,7 @@ actor TMDBClient {
         for titles: [TrendingTitle],
         accessToken: String,
         language: String = "en-US",
-        timeout: Duration = .seconds(5)
+        timeout: Duration = .seconds(7)
     ) async -> TMDBCarouselAssets {
         enum Result: Sendable {
             case title(key: String, artwork: Data?, logo: Data?)
@@ -554,16 +577,19 @@ actor TMDBClient {
         return await withTaskGroup(of: Result.self) { group in
             for title in titles {
                 group.addTask { [self] in
-                    async let artwork: Data? = {
-                        guard let url = title.posterURL ?? title.backdropURL else { return nil }
-                        return try? await imageData(for: url)
-                    }()
-                    async let logo = try? logoData(
-                        for: title,
+                    let presentation = try? await titlePresentationAssets(
+                        tmdbID: title.id,
+                        kind: title.kind,
                         accessToken: accessToken,
-                        language: language
+                        language: language,
+                        fallbackPosterURL: title.posterURL,
+                        fallbackBackdropURL: title.backdropURL
                     )
-                    return await .title(key: title.lookupKey, artwork: artwork, logo: logo)
+                    return .title(
+                        key: title.lookupKey,
+                        artwork: presentation?.artwork,
+                        logo: presentation?.logo
+                    )
                 }
             }
             group.addTask {
@@ -590,6 +616,45 @@ actor TMDBClient {
             }
             return assets
         }
+    }
+
+    /// Loads the clear title logo plus hero artwork that prefers textless
+    /// poster/backdrop stills so logos are not doubled over baked-in title treatments.
+    func titlePresentationAssets(
+        tmdbID: Int,
+        kind: MediaKind,
+        accessToken: String,
+        language: String,
+        fallbackPosterURL: URL?,
+        fallbackBackdropURL: URL?
+    ) async throws -> (artwork: Data?, logo: Data?) {
+        let images = try? await imagesPayload(
+            tmdbID: tmdbID,
+            kind: kind,
+            accessToken: accessToken,
+            language: language
+        )
+        let preferredLanguage = Self.imageLanguageCode(from: language)
+        let logoURL = images?.preferredLogoURL(language: preferredLanguage)
+        async let logo: Data? = {
+            guard let logoURL else { return nil }
+            return try? await imageData(for: logoURL)
+        }()
+
+        var candidateURLs: [URL] = []
+        if let images {
+            // When a logo will render on top, prefer language-null (textless) stills first.
+            if logoURL != nil {
+                candidateURLs.append(contentsOf: images.preferredTextlessHeroURLs())
+            }
+            candidateURLs.append(contentsOf: images.preferredHeroURLs(language: preferredLanguage))
+        }
+        for url in [fallbackPosterURL, fallbackBackdropURL].compactMap({ $0 }) {
+            if !candidateURLs.contains(url) { candidateURLs.append(url) }
+        }
+
+        let artwork = await firstLoadableImage(from: candidateURLs, excluding: []).data
+        return (artwork, await logo)
     }
 
     func imageData(for url: URL) async throws -> Data {
@@ -681,7 +746,6 @@ actor TMDBClient {
         accessToken: String,
         language: String = "en-US"
     ) async throws -> URL? {
-        guard !accessToken.isEmpty else { throw TMDBError.missingAccessToken }
         let preferredLanguage = Self.imageLanguageCode(from: language)
         let lookupCacheURL = try Self.logoLookupCacheURL(
             tmdbID: tmdbID,
@@ -692,6 +756,37 @@ actor TMDBClient {
            let value = String(data: cachedLookup, encoding: .utf8) {
             return value == "none" ? nil : URL(string: value)
         }
+
+        let payload = try await imagesPayload(
+            tmdbID: tmdbID,
+            kind: kind,
+            accessToken: accessToken,
+            language: language
+        )
+        let logoURL = payload.preferredLogoURL(language: preferredLanguage)
+        let cachedValue = logoURL?.absoluteString ?? "none"
+        await imageCache.store(Data(cachedValue.utf8), for: lookupCacheURL)
+        return logoURL
+    }
+
+    private func imagesPayload(
+        tmdbID: Int,
+        kind: MediaKind,
+        accessToken: String,
+        language: String
+    ) async throws -> TMDBImagesPayload {
+        guard !accessToken.isEmpty else { throw TMDBError.missingAccessToken }
+        let preferredLanguage = Self.imageLanguageCode(from: language)
+        let cacheURL = try Self.imagesLookupCacheURL(
+            tmdbID: tmdbID,
+            kind: kind,
+            language: preferredLanguage
+        )
+        if let cached = await imageCache.data(for: cacheURL),
+           let payload = try? JSONDecoder().decode(TMDBImagesPayload.self, from: cached) {
+            return payload
+        }
+
         let includedLanguages = [preferredLanguage, "en", "null"]
             .reduce(into: [String]()) { values, language in
                 if !values.contains(language) { values.append(language) }
@@ -716,10 +811,8 @@ actor TMDBClient {
         let response = try await client.data(for: request)
         do {
             let payload = try JSONDecoder().decode(TMDBImagesPayload.self, from: response.data)
-            let logoURL = payload.preferredLogoURL(language: preferredLanguage)
-            let cachedValue = logoURL?.absoluteString ?? "none"
-            await imageCache.store(Data(cachedValue.utf8), for: lookupCacheURL)
-            return logoURL
+            await imageCache.store(response.data, for: cacheURL)
+            return payload
         } catch {
             throw AppError.decoding(error.localizedDescription)
         }
@@ -912,6 +1005,20 @@ actor TMDBClient {
         guard let url = components.url else { throw AppError.invalidURL }
         return url
     }
+
+    private static func imagesLookupCacheURL(
+        tmdbID: Int,
+        kind: MediaKind,
+        language: String
+    ) throws -> URL {
+        var components = URLComponents()
+        components.scheme = "tmdb-images"
+        components.host = kind.rawValue
+        components.path = "/\(tmdbID)"
+        components.queryItems = [URLQueryItem(name: "language", value: language)]
+        guard let url = components.url else { throw AppError.invalidURL }
+        return url
+    }
 }
 
 actor TMDBImageCache {
@@ -1094,10 +1201,48 @@ private struct TMDBArtworkPayload: Decodable, Sendable {
 }
 
 private struct TMDBImagesPayload: Decodable, Sendable {
-    let logos: [TMDBLogoPayload]
+    let logos: [TMDBImageAssetPayload]
+    let posters: [TMDBImageAssetPayload]
+    let backdrops: [TMDBImageAssetPayload]
+
+    enum CodingKeys: String, CodingKey {
+        case logos, posters, backdrops
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        logos = try container.decodeIfPresent([TMDBImageAssetPayload].self, forKey: .logos) ?? []
+        posters = try container.decodeIfPresent([TMDBImageAssetPayload].self, forKey: .posters) ?? []
+        backdrops = try container.decodeIfPresent([TMDBImageAssetPayload].self, forKey: .backdrops) ?? []
+    }
 
     func preferredLogoURL(language: String) -> URL? {
-        logos
+        ranked(logos, language: language).first?.url
+    }
+
+    /// Textless stills (`iso_639_1 == null`) preferred for Featured / Detail heroes
+    /// when a clear title logo will sit on top of the artwork.
+    func preferredTextlessHeroURLs() -> [URL] {
+        let textlessPosters = posters.filter { $0.languageCode == nil }
+        let textlessBackdrops = backdrops.filter { $0.languageCode == nil }
+        return uniqueURLs(
+            from: ranked(textlessPosters, language: "").map(\.url)
+                + ranked(textlessBackdrops, language: "").map(\.url)
+        )
+    }
+
+    func preferredHeroURLs(language: String) -> [URL] {
+        uniqueURLs(
+            from: ranked(posters, language: language).map(\.url)
+                + ranked(backdrops, language: language).map(\.url)
+        )
+    }
+
+    private func ranked(
+        _ assets: [TMDBImageAssetPayload],
+        language: String
+    ) -> [TMDBImageAssetPayload] {
+        assets
             .enumerated()
             .sorted { lhs, rhs in
                 let lhsRank = Self.languageRank(lhs.element.languageCode, preferred: language)
@@ -1111,20 +1256,24 @@ private struct TMDBImagesPayload: Decodable, Sendable {
                 }
                 return lhs.offset < rhs.offset
             }
-            .first?
-            .element
-            .url
+            .map(\.element)
+    }
+
+    private func uniqueURLs(from urls: [URL?]) -> [URL] {
+        urls.compactMap { $0 }.reduce(into: [URL]()) { result, url in
+            if !result.contains(url) { result.append(url) }
+        }
     }
 
     private static func languageRank(_ language: String?, preferred: String) -> Int {
-        if language == preferred { return 0 }
+        if !preferred.isEmpty, language == preferred { return 0 }
         if language == "en" { return 1 }
-        if language == nil { return 2 }
+        if language == nil { return preferred.isEmpty ? 0 : 2 }
         return 3
     }
 }
 
-private struct TMDBLogoPayload: Decodable, Sendable {
+private struct TMDBImageAssetPayload: Decodable, Sendable {
     let filePath: String
     let languageCode: String?
     let voteAverage: Double

@@ -95,10 +95,11 @@ struct DetailsView: View {
         .background { AppScreenBackground() }
         .ignoresSafeArea(edges: .top)
         .modifier(HeroViewportModifier())
-        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar(.visible, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -107,13 +108,23 @@ struct DetailsView: View {
                     Image(systemName: "chevron.left")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                         .glassEffectWithFallback(in: Circle())
                 }
                 .accessibilityLabel("Back")
             }
         }
-        .toolbar(.hidden, for: .tabBar)
+        .background {
+            NavigationChromeStabilizer(enablesInteractivePop: true)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .overlay(alignment: .top) {
+            PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 36)
+                .allowsHitTesting(false)
+        }
         .overlay { if model.isLoading && model.item.overview == nil { ProgressView() } }
         .overlay {
             if let episodeInfo {
@@ -302,7 +313,8 @@ struct DetailsView: View {
     }
 
     private var detailsTitle: some View {
-        // Show either the TMDB title logo or the text title — never both.
+        // Logo XOR text — never both. Prefer the TMDB title treatment logo over
+        // baked-in poster typography (hero art prefers textless sources when a logo exists).
         TitleLogoView(
             title: model.item.title,
             logoData: tmdbTitleLogoData,
@@ -333,7 +345,7 @@ struct DetailsView: View {
                 .loaded(try? await environment.tmdbLogoData(for: item))
             }
             group.addTask {
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(8))
                 return .timeout
             }
 

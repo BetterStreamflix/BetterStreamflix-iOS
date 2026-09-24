@@ -68,7 +68,7 @@ struct MediaShelfView: View {
                                 }
                             }
                         }
-                        .buttonStyle(.plain)
+                        .pressablePoster()
                     }
                 }
                 .padding(.horizontal)
@@ -132,7 +132,7 @@ struct MediaGridView: View {
                             }
                         }
                     }
-                    .buttonStyle(.plain)
+                    .pressablePoster()
                 }
             }
             .padding(.horizontal, MediaArtworkLayout.gridHorizontalPadding)
@@ -345,8 +345,6 @@ struct TMDBShelfView: View {
                                     }
                                 }
                         }
-                        .buttonStyle(.plain)
-                        .scaleEffect(1)
                         .pressablePoster()
                         .allowsHitTesting(!resolvingKeys.contains(title.lookupKey))
                     }
@@ -529,7 +527,7 @@ struct TMDBCollectionGridView: View {
                                 }
                             }
                     }
-                    .buttonStyle(.plain)
+                    .pressablePoster()
                     .allowsHitTesting(!sourceLookup.activeKeys.contains(title.lookupKey))
                     .onAppear {
                         if title == model.titles.last {
@@ -584,7 +582,7 @@ struct CatalogView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 26) {
-                HStack(alignment: .center) {
+                HStack(alignment: .center, spacing: 12) {
                     PageTitleText(title: kind == .movie ? "Movies" : "Series")
                     Spacer(minLength: 8)
                     if let onOpenSearch {
@@ -592,16 +590,21 @@ struct CatalogView: View {
                             Image(systemName: "magnifyingglass")
                                 .font(.title3.weight(.semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 40, height: 40)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                                 .glassEffectWithFallback(in: Circle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Search")
                         .padding(.trailing, 20)
-                        .padding(.top, 58)
                     }
                 }
+                .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
                 .padding(.bottom, 12)
+                .background(alignment: .top) {
+                    PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 64)
+                        .ignoresSafeArea(edges: .top)
+                }
 
                 if model.isLoading && model.titles.isEmpty {
                     ForEach(0..<3, id: \.self) { _ in
@@ -626,6 +629,16 @@ struct CatalogView: View {
                         }
                         .redacted(reason: .placeholder)
                     }
+                } else if !model.isLoading,
+                          model.collections.allSatisfy({ (model.titles[$0] ?? []).isEmpty }) {
+                    ContentUnavailableView(
+                        "Nothing to browse",
+                        systemImage: kind == .movie ? "film" : "tv",
+                        description: Text("Pull to refresh, or check your connection and try again.")
+                    )
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 48)
                 }
                 ForEach(model.collections) { collection in
                     if let titles = model.titles[collection], !titles.isEmpty {
@@ -640,9 +653,12 @@ struct CatalogView: View {
             }
             .padding(.bottom)
         }
+        .scrollIndicators(.automatic)
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .background { AppScreenBackground() }
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .tabBar)
         .navigationDestination(item: $selectedDetails) {
             DetailsView(item: $0.media, tmdbMetadata: $0.tmdbMetadata)
         }

@@ -36,6 +36,13 @@ struct PersonProfileView: View {
         .navigationTitle(profile?.name ?? placeholderName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbar(.visible, for: .tabBar)
+        .background {
+            NavigationChromeStabilizer(enablesInteractivePop: true)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .overlay {
             if isLoading && profile == nil {
                 ProgressView()
@@ -157,7 +164,6 @@ struct PersonProfileView: View {
                                     .frame(width: MediaArtworkLayout.shelfPosterWidth, alignment: .leading)
                             }
                         }
-                        .buttonStyle(.plain)
                         .pressablePoster()
                     }
                 }

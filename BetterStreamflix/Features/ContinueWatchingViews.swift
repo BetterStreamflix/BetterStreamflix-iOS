@@ -52,7 +52,7 @@ struct ContinueWatchingShelfView: View {
                                     ContinueWatchingMenuPreview(progress: value)
                                 }
                         }
-                        .buttonStyle(.plain)
+                        .pressablePoster()
                     }
                 }
                 .padding(.horizontal, 20)

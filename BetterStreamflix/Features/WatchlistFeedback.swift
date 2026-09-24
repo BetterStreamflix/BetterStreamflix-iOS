@@ -85,6 +85,7 @@ struct WatchlistToggleButton: View {
                 .animation(DesignTokens.Motion.watchlistBounce, value: bounce)
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .modifier(WatchlistGlassBackground(enabled: glass))
         .accessibilityLabel(isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist")
         // Haptics fire only from WatchlistFeedback.toggle on explicit user action —

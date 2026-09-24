@@ -139,7 +139,7 @@ struct SettingsView: View {
             if showsInlineTitle {
                 Color.clear.frame(height: 0)
             } else {
-                PageTitleHeader(title: "Settings")
+                PageTitleHeader(title: "Settings", ignoresTopSafeArea: true)
             }
 
             Form {
@@ -387,7 +387,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.3"
+        ) as? String ?? "0.0.4"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"

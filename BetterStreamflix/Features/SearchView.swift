@@ -21,7 +21,7 @@ struct SearchView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
-                PageTitleHeader(title: "Search")
+                PageTitleHeader(title: "Search", ignoresTopSafeArea: true)
 
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
@@ -113,7 +113,7 @@ struct SearchView: View {
                                         }
                                     }
                             }
-                            .buttonStyle(.plain)
+                            .pressablePoster()
                         }
                     }
                     .padding(.horizontal, MediaArtworkLayout.gridHorizontalPadding)
@@ -126,6 +126,7 @@ struct SearchView: View {
         .background { AppScreenBackground() }
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .tabBar)
         .onChange(of: model.query) { _, _ in model.search(environment: environment) }
         .onChange(of: isSearchPresented) { _, presented in
             if !presented { searchFieldIsFocused = false }

@@ -80,11 +80,13 @@ struct HomeView: View {
             }
             .padding(.bottom)
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .coordinateSpace(name: HeroArtworkScrollEffect.homeCoordinateSpace)
         .background { AppScreenBackground() }
         .ignoresSafeArea(edges: .top)
         .modifier(HeroViewportModifier())
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .tabBar)
         .task {
             await model.loadTrending(environment: environment)
             onInitialLoadCompleted()
@@ -436,8 +438,8 @@ struct TrendingHeroCarousel: View {
 }
 
 struct TitleLogoView<Fallback: View>: View {
-    private let maximumLogoWidth: CGFloat = 300
-    private let maximumLogoHeight: CGFloat = 88
+    private let maximumLogoWidth: CGFloat = 320
+    private let maximumLogoHeight: CGFloat = 96
 
     let title: String
     let logoData: Data?
@@ -458,7 +460,7 @@ struct TitleLogoView<Fallback: View>: View {
 
     var body: some View {
         let logoImage = logoData.flatMap(UIImage.init(data:)).flatMap { image -> UIImage? in
-            guard image.size.width > 2, image.size.height > 2 else { return nil }
+            guard image.size.width > 4, image.size.height > 4 else { return nil }
             return image
         }
 
@@ -471,6 +473,7 @@ struct TitleLogoView<Fallback: View>: View {
                         maxWidth: maximumLogoWidth,
                         maxHeight: maximumLogoHeight
                     )
+                    .shadow(color: .black.opacity(0.45), radius: 10, y: 3)
                     .accessibilityHidden(true)
             } else if showsFallback {
                 fallback
@@ -480,7 +483,7 @@ struct TitleLogoView<Fallback: View>: View {
             }
         }
             // Reserve one consistent logo region. Logo XOR text — never both.
-            .frame(maxWidth: maximumLogoWidth, minHeight: maximumLogoHeight)
+            .frame(maxWidth: maximumLogoWidth, minHeight: maximumLogoHeight * 0.72)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(title)
     }
@@ -491,35 +494,50 @@ struct FeaturedTopChrome: View {
     let currentIndex: Int
 
     var body: some View {
-        VStack {
-            HStack(alignment: .center, spacing: 12) {
-                Image("AppLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("BetterStreamflix")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                    Text("Featured")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.7))
+        VStack(spacing: 0) {
+            ZStack(alignment: .top) {
+                PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 72)
+                    .frame(maxWidth: .infinity)
+
+                HStack(alignment: .center, spacing: 12) {
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 34, height: 34)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("BetterStreamflix")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.55), radius: 8, y: 2)
+                        Text("Featured")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .shadow(color: .black.opacity(0.45), radius: 6, y: 1)
+                    }
+                    Spacer(minLength: 8)
+                    if titleCount > 1 {
+                        Text("\(currentIndex + 1) / \(titleCount)")
+                            .font(.caption.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background {
+                                Capsule()
+                                    .fill(Color.black.opacity(0.42))
+                                    .overlay {
+                                        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 0.8)
+                                    }
+                            }
+                            .background(.ultraThinMaterial.opacity(0.55), in: Capsule())
+                            .accessibilityLabel("Featured \(currentIndex + 1) of \(titleCount)")
+                    }
                 }
-                Spacer()
-                if titleCount > 1 {
-                    Text("\(currentIndex + 1)/\(titleCount)")
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.85))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .glassEffectWithFallback(in: Capsule())
-                }
+                .padding(.horizontal, 20)
+                .padding(.top, ScreenMetrics.topSafeAreaInset + 10)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 56)
-            Spacer()
+            Spacer(minLength: 0)
         }
         .allowsHitTesting(false)
     }
@@ -653,10 +671,13 @@ struct PageTitleOverlay: View {
     let title: String
 
     var body: some View {
-        VStack {
-            PageTitleText(title: title)
-                .padding(.top, 58)
-            Spacer()
+        VStack(spacing: 0) {
+            ZStack(alignment: .top) {
+                PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 64)
+                PageTitleText(title: title)
+                    .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
+            }
+            Spacer(minLength: 0)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -665,11 +686,22 @@ struct PageTitleOverlay: View {
 
 struct PageTitleHeader: View {
     let title: String
+    /// When the parent ignores the top safe area (full-bleed pages), pad past the
+    /// status bar / Dynamic Island. When the parent already respects safe area,
+    /// only add a small breathing gap.
+    var ignoresTopSafeArea: Bool = false
 
     var body: some View {
-        PageTitleText(title: title)
-            .padding(.top, 58)
-            .padding(.bottom, 12)
+        VStack(spacing: 0) {
+            if ignoresTopSafeArea {
+                PageTitleTopScrim(height: ScreenMetrics.topSafeAreaInset + 56)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, -(ScreenMetrics.topSafeAreaInset + 56))
+            }
+            PageTitleText(title: title)
+                .padding(.top, ignoresTopSafeArea ? ScreenMetrics.topSafeAreaInset + 8 : 8)
+                .padding(.bottom, 12)
+        }
     }
 }
 
@@ -681,8 +713,9 @@ struct PageTitleText: View {
             Text(title)
                 .font(.system(size: 38, weight: .bold))
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.5), radius: 12, y: 3)
-            Spacer()
+                .shadow(color: .black.opacity(0.55), radius: 12, y: 3)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
     }

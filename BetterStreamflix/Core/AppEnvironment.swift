@@ -549,7 +549,7 @@ final class AppEnvironment: ObservableObject {
 
     func preloadCarouselAssets(
         for titles: [TrendingTitle],
-        timeout: Duration = .seconds(5)
+        timeout: Duration = .seconds(7)
     ) async -> TMDBCarouselAssets {
         guard let token = try? tmdbAccessToken() else { return TMDBCarouselAssets() }
         let language = Locale.preferredLanguages.first ?? "en-US"

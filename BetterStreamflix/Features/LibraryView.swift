@@ -9,6 +9,8 @@ struct LibraryView: View {
     @State private var playback: PlaybackRequest?
     @State private var segment: LibrarySegment = .continueWatching
     @State private var sortNewestFirst = true
+    /// When pushed from More, use the system navigation chrome instead of the large page title.
+    var showsInlineTitle: Bool = false
 
     private enum LibrarySegment: String, CaseIterable, Identifiable {
         case continueWatching = "Continue"
@@ -28,7 +30,11 @@ struct LibraryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PageTitleHeader(title: "Library")
+            if showsInlineTitle {
+                Color.clear.frame(height: 0)
+            } else {
+                PageTitleHeader(title: "Library", ignoresTopSafeArea: true)
+            }
 
             Picker("Library", selection: $segment) {
                 ForEach(LibrarySegment.allCases) { item in
@@ -71,6 +77,7 @@ struct LibraryView: View {
             }
         }
         .background { AppScreenBackground() }
+        .modifier(LibraryChromeModifier(showsInlineTitle: showsInlineTitle))
         .navigationDestination(item: $selectedDetails) { item in
             DetailsView(item: item.media, tmdbMetadata: item.tmdbMetadata)
         }
@@ -258,5 +265,25 @@ struct LibraryEmptyState: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct LibraryChromeModifier: ViewModifier {
+    let showsInlineTitle: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if showsInlineTitle {
+            content
+                .navigationTitle("Library")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+                .toolbar(.visible, for: .tabBar)
+        } else {
+            content
+                .ignoresSafeArea(edges: .top)
+                .toolbar(.hidden, for: .navigationBar)
+                .toolbar(.visible, for: .tabBar)
+        }
     }
 }

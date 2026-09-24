@@ -13,7 +13,7 @@ struct MoreView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    PageTitleHeader(title: "More")
+                    PageTitleHeader(title: "More", ignoresTopSafeArea: true)
 
                     hubCard {
                         hubRow(
@@ -112,6 +112,7 @@ struct MoreView: View {
             .background { AppScreenBackground() }
             .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
+            .toolbar(.visible, for: .tabBar)
             .navigationDestination(for: MoreRoute.self) { route in
                 switch route {
                 case .search:
@@ -124,7 +125,7 @@ struct MoreView: View {
                 case .settings:
                     SettingsView(showsInlineTitle: true)
                 case .library:
-                    LibraryView()
+                    LibraryView(showsInlineTitle: true)
                 }
             }
             .onChange(of: openSearchRequest) { _, _ in
@@ -192,7 +193,7 @@ struct MoreView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.3"
+        ) as? String ?? "0.0.4"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"

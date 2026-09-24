@@ -318,8 +318,10 @@ extension View {
         }
     }
 
+    /// Press scale for poster/card buttons. Uses `ButtonStyle` so vertical and
+    /// horizontal `ScrollView` pans are not stolen by a zero-distance drag gesture.
     func pressablePoster() -> some View {
-        modifier(PressablePosterModifier())
+        buttonStyle(PressablePosterButtonStyle())
     }
 
     /// Liquid Glass–ready chrome. Soft interactive material that reads as glass on
@@ -350,18 +352,108 @@ extension View {
     }
 }
 
-struct PressablePosterModifier: ViewModifier {
-    @State private var isPressed = false
+/// Plain button chrome with a light press scale. Prefer this over attaching a
+/// `DragGesture(minimumDistance: 0)` to poster cells — that gesture wins hit-testing
+/// against the enclosing scroll views and makes scrolling only work in the gaps.
+struct PressablePosterButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(DesignTokens.Motion.press, value: configuration.isPressed)
+            .contentShape(Rectangle())
+    }
+}
 
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(isPressed ? 0.96 : 1)
-            .animation(DesignTokens.Motion.press, value: isPressed)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in isPressed = true }
-                    .onEnded { _ in isPressed = false }
-            )
+/// Reads the key window's top safe-area inset for chrome that sits under a
+/// full-bleed `.ignoresSafeArea(edges: .top)` hero or page background.
+enum ScreenMetrics {
+    @MainActor
+    static var topSafeAreaInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let keyWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+            ?? scenes.first?.windows.first
+        return keyWindow?.safeAreaInsets.top ?? 59
+    }
+}
+
+/// Soft scrim behind large page titles / Featured chrome so white type stays
+/// readable over bright artwork and the status bar.
+struct PageTitleTopScrim: View {
+    var height: CGFloat = 120
+
+    var body: some View {
+        LinearGradient(
+            colors: [
+                Color.black.opacity(0.72),
+                Color.black.opacity(0.38),
+                Color.black.opacity(0),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: height)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Keeps the interactive pop gesture alive when the system back button is hidden,
+/// and restores tab-bar visibility after immersive detail chrome.
+struct NavigationChromeStabilizer: UIViewControllerRepresentable {
+    var enablesInteractivePop: Bool = true
+
+    func makeUIViewController(context: Context) -> ChromeController {
+        ChromeController(enablesInteractivePop: enablesInteractivePop)
+    }
+
+    func updateUIViewController(_ uiViewController: ChromeController, context: Context) {
+        uiViewController.enablesInteractivePop = enablesInteractivePop
+        uiViewController.applyChrome()
+    }
+
+    final class ChromeController: UIViewController, UIGestureRecognizerDelegate {
+        var enablesInteractivePop: Bool
+
+        init(enablesInteractivePop: Bool) {
+            self.enablesInteractivePop = enablesInteractivePop
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            applyChrome()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            // Leaving an immersive screen should never leave the tab bar stuck hidden
+            // on the parent navigation stack.
+            tabBarController?.tabBar.isHidden = false
+        }
+
+        func applyChrome() {
+            guard enablesInteractivePop,
+                  let navigationController,
+                  let pop = navigationController.interactivePopGestureRecognizer else { return }
+            pop.isEnabled = navigationController.viewControllers.count > 1
+            pop.delegate = self
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            (navigationController?.viewControllers.count ?? 0) > 1
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
     }
 }
 

@@ -72,6 +72,7 @@ struct RootView: View {
                     .tag(Tab.more)
             }
             .tint(environment.theme.accent)
+            .toolbar(.visible, for: .tabBar)
             .overlay(alignment: .top) {
                 SourceLookupStatusOverlay()
                     .safeAreaPadding(.top, 8)
