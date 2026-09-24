@@ -388,6 +388,9 @@ enum HosterExtractor {
         if host.contains("vidoza") || host.contains("videzz") || hint.contains("vidoza") {
             return try await vidoza(url)
         }
+        if host.contains("vidara") || hint.contains("vidara") {
+            return try await vidara(url)
+        }
         return try await generic(url, referer: referer, depth: depth)
     }
 
@@ -636,6 +639,55 @@ enum HosterExtractor {
         )
     }
 
+    // MARK: Vidara
+
+    /// Ported from `VidaraExtractor`. The embed page is an empty player shell and
+    /// the real URL comes back from `POST {origin}/api/stream`, keyed on the file
+    /// code from the path. Deriving the origin from the link rather than a host
+    /// list is what keeps the rotating mirror domains working.
+    static func vidara(_ link: URL) async throws -> PlaybackSource {
+        guard let code = link.pathComponents.last(where: { !$0.isEmpty && $0 != "/" }),
+              let api = URL(string: link.origin + "/api/stream") else { throw AppError.noStream }
+        let request = HosterHTTP.jsonRequest(url: api, referer: link, body: ["filecode": code, "device": "web"])
+        let response = try await HosterHTTP.shared.send(request)
+        guard let payload = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+              let raw = payload["streaming_url"] as? String,
+              let source = URL(string: raw.replacingOccurrences(of: "\\/", with: "/")) else {
+            throw AppError.noStream
+        }
+
+        let headers = [
+            "Referer": link.origin + "/",
+            "Origin": link.origin,
+            "User-Agent": HTTPClient.desktopUserAgent,
+        ]
+        let preferred = payload["default_sub_lang"] as? String ?? ""
+        var claimedDefault = false
+        let subtitles = (payload["subtitles"] as? [[String: Any]] ?? []).compactMap { entry -> SubtitleSource? in
+            guard let path = entry["file_path"] as? String, !path.isEmpty,
+                  let url = URL(string: path, relativeTo: link)?.absoluteURL else { return nil }
+            let label = entry["language"] as? String ?? "Untertitel"
+            let isDefault = !claimedDefault && !preferred.isEmpty && label.contains(preferred)
+            if isDefault { claimedDefault = true }
+            return SubtitleSource(
+                providerID: "vidara",
+                providerName: "Vidara",
+                label: label,
+                languageCode: AnimeStreamResolver.languageCode(label),
+                url: url,
+                isDefault: isDefault,
+                headers: headers
+            )
+        }
+        return PlaybackSource(url: source, headers: headers, subtitles: subtitles, preferredPeakBitRate: nil)
+    }
+
+    /// The Vidara player software identifies itself in the shell it serves, which
+    /// is the only way to spot a mirror whose domain nobody has seen before.
+    static func looksLikeVidara(_ html: String) -> Bool {
+        html.contains("api/stream") && html.contains("filecode")
+    }
+
     // MARK: Embed wrappers and generic pages
 
     static func meinecloud(_ link: URL, referer: URL?, depth: Int) async throws -> PlaybackSource {
@@ -659,6 +711,7 @@ enum HosterExtractor {
         if let payload = decryptVOEPayload(in: html) {
             return try voeSource(payload, html: html, link: link)
         }
+        if looksLikeVidara(html), let source = try? await vidara(link) { return source }
         let tree = AnimeHTML.parse(html)
         if let node = tree.first({ ($0.tag == "source" || $0.tag == "video") && !$0["src"].isEmpty }),
            let url = URL(string: node["src"], relativeTo: link)?.absoluteURL,
