@@ -7,7 +7,7 @@ import Foundation
 struct HosterHTTP: Sendable {
     static let shared = HosterHTTP()
 
-    nonisolated(unsafe) private static let session: URLSession = {
+    private static let session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 30
@@ -65,9 +65,12 @@ struct HosterHTTP: Sendable {
         return object
     }
 
+    var cookieStorage: HTTPCookieStorage {
+        Self.session.configuration.httpCookieStorage ?? HTTPCookieStorage.shared
+    }
+
     func cookie(named name: String, for url: URL) -> String? {
-        let jar = Self.session.configuration.httpCookieStorage ?? HTTPCookieStorage.shared
-        guard let value = jar.cookies(for: url)?
+        guard let value = cookieStorage.cookies(for: url)?
             .first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })?.value else { return nil }
         return value.removingPercentEncoding ?? value
     }
