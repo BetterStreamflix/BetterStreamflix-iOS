@@ -14,8 +14,13 @@ if [[ $# -gt 1 ]]; then
     exit 2
 fi
 
-VERSION="${1:-}"
+# Prefer explicit arg, then BUILD_VERSION (CI), then interactive prompt.
+VERSION="${1:-${BUILD_VERSION:-}}"
 if [[ -z "$VERSION" ]]; then
+    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
+        echo "Usage in CI: $0 <version>  or  BUILD_VERSION=<version> $0" >&2
+        exit 2
+    fi
     read -r -p "What version should I build? (example: 2.0.0): " VERSION
 fi
 

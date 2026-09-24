@@ -1,0 +1,64 @@
+name: Unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Marketing version for the IPA (leave empty to use project.yml)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-unsigned-ipa:
+    name: Build unsigned IPA
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          INPUT="${{ github.event.inputs.version }}"
+          if [[ -n "${INPUT}" ]]; then
+            VERSION="$INPUT"
+          else
+            VERSION="$(sed -nE 's/.*MARKETING_VERSION: ([0-9]+([.][0-9]+){0,2}).*/\1/p' project.yml | head -1)"
+          fi
+          if [[ -z "$VERSION" ]]; then
+            echo "Could not resolve marketing version." >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building BetterStreamflix $VERSION (unsigned IPA)"
+
+      - name: Build unsigned IPA
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: ./build-unsigned-ipa.sh "$BUILD_VERSION"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BetterStreamflix-${{ steps.version.outputs.version }}-unsigned
+          path: build/unsigned-ipa/${{ steps.version.outputs.version }}/BetterStreamflix-${{ steps.version.outputs.version }}-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

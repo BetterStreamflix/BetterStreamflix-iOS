@@ -1,9 +1,6 @@
 BetterStreamflix for iOS
 Copyright 2026 BetterStreamflix
 
-This product includes work derived from:
-- Vela for iOS (https://github.com/rtk19/Vela), itself based on BetterStreamflix
-- BetterStreamflix by dskja
-- Streamflix by Lory-Stan TANASI
-
-Licensed under the Apache License, Version 2.0. See the repository LICENSE file.
+This product includes software developed for the BetterStreamflix project and
+prior Streamflix-family work licensed under the Apache License, Version 2.0.
+See the repository LICENSE file.
