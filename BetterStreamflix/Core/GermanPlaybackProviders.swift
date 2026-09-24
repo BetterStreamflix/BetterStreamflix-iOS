@@ -806,17 +806,16 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
     var baseURL: URL { Self.base }
 
     private static let base = URL(string: "https://megakino.me/")!
-    private static let mirrorHosts = ["megakino.me", "megakino19.com", "www.megakino.me", "www.megakino19.com"]
 
     func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
-        await Self.ensureToken()
-        guard let page = try await findPage(for: context) else { return [] }
-        let html = try await GermanScrape.client.page(page, referer: baseURL)
+        let session = await Self.openSession()
+        guard let page = try await findPage(for: context, session: session) else { return [] }
+        let html = try await Self.page(page, referer: session.origin, session: session)
 
         if let episode = context.request.episode {
             return Self.episodeHosters(in: html, page: page, episode: episode.number)
         }
-        let hosters = Self.movieHosters(in: html, page: page)
+        let hosters = Self.movieHosters(in: html, page: page, session: session)
         if !hosters.isEmpty { return await GermanScrape.expandingWrappers(hosters) }
 
         guard let imdb = AnimeHTML.captures(#"(tt\d{7,8})"#, in: html).first?[1],
@@ -826,31 +825,47 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
         }
     }
 
-    /// The site mints a `yg_token` cookie through a chain of cross-host redirects
-    /// and then expects it back on whichever mirror serves the page.
-    private static func ensureToken() async {
-        guard let token = GermanScrape.url(base, "index.php", query: ["yg": "token"]),
-              let response = try? await GermanScrape.client.get(token, referer: base) else { return }
-        let storage = GermanScrape.client.cookieStorage
-        guard let cookies = storage.cookies(for: response.url), !cookies.isEmpty else { return }
-        for host in mirrorHosts where host != response.url.hostName {
-            for cookie in cookies {
-                var properties = cookie.properties ?? [:]
-                properties[.domain] = host
-                properties[.originURL] = "https://\(host)/"
-                properties[.path] = properties[.path] ?? "/"
-                if let copy = HTTPCookie(properties: properties) { storage.setCookie(copy) }
-            }
-        }
+    /// megakino.me hops through numbered mirrors and mints a `yg_token` cookie on
+    /// whichever one ends up serving the site, so both have to be carried along.
+    private struct Session: Sendable {
+        let origin: URL
+        let cookies: String?
     }
 
-    private func findPage(for context: PlaybackLookupContext) async throws -> URL? {
+    private static func openSession() async -> Session {
+        guard let token = GermanScrape.url(base, "index.php", query: ["yg": "token"]),
+              let response = try? await GermanScrape.client.get(token, referer: base) else {
+            return Session(origin: base, cookies: nil)
+        }
+        var pairs: [String: String] = [:]
+        for cookie in GermanScrape.client.cookieStorage.cookies(for: response.url) ?? [] {
+            pairs[cookie.name] = cookie.value
+        }
+        for cookie in response.cookies { pairs[cookie.name] = cookie.value }
+        return Session(
+            origin: URL(string: response.url.origin) ?? base,
+            cookies: pairs.isEmpty ? nil : pairs.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+        )
+    }
+
+    private static func request(_ url: URL, referer: URL, session: Session) -> URLRequest {
+        var request = HosterHTTP.request(url: url, referer: referer)
+        if let cookies = session.cookies { request.setValue(cookies, forHTTPHeaderField: "Cookie") }
+        return request
+    }
+
+    private static func page(_ url: URL, referer: URL, session: Session) async throws -> String {
+        let response = try await GermanScrape.client.send(request(url, referer: referer, session: session))
+        return response.text
+    }
+
+    private func findPage(for context: PlaybackLookupContext, session: Self.Session) async throws -> URL? {
         let wantsSeries = context.request.media.kind == .series
         let season = context.request.episode?.seasonNumber
-        for (index, query) in GermanScrape.queries(for: context).enumerated() {
+        for query in GermanScrape.queries(for: context) {
             try Task.checkCancellation()
-            guard let search = GermanScrape.url(baseURL, "index.php", query: ["do": "search"]) else { continue }
-            let request = HosterHTTP.formRequest(url: search, referer: baseURL, fields: [
+            guard let search = GermanScrape.url(session.origin, "index.php", query: ["do": "search"]) else { continue }
+            var request = HosterHTTP.formRequest(url: search, referer: session.origin, fields: [
                 "do": "search",
                 "subaction": "search",
                 "search_start": "1",
@@ -858,8 +873,8 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
                 "result_from": "1",
                 "story": query,
             ])
+            if let cookies = session.cookies { request.setValue(cookies, forHTTPHeaderField: "Cookie") }
             guard let response = try? await GermanScrape.client.send(request) else { continue }
-            _ = index
 
             var fallback: URL?
             for card in AnimeHTML.parse(response.text).all({ $0.tag == "a" && $0.hasClass("poster") }) {
@@ -867,7 +882,7 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
                 let title = card.first { $0.tag == "h3" && $0.hasClass("poster__title") }?.text ?? ""
                 guard !href.isEmpty, !title.isEmpty, href.contains("/serials/") == wantsSeries,
                       GermanScrape.matches(Self.showTitle(title), context: context),
-                      let url = MeinecloudEmbedHelper.normalize(href, relativeTo: baseURL) else { continue }
+                      let url = MeinecloudEmbedHelper.normalize(href, relativeTo: session.origin) else { continue }
                 // Series live one page per season, labelled "Titel - 2 Staffel".
                 if let season, Self.seasonNumber(in: title) == season { return url }
                 if fallback == nil { fallback = url }
@@ -886,7 +901,7 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
         return Int(match[1])
     }
 
-    private static func movieHosters(in html: String, page: URL) -> [GermanHoster] {
+    private static func movieHosters(in html: String, page: URL, session: Session) -> [GermanHoster] {
         let tree = AnimeHTML.parse(html)
         let tabNames = tree.all { $0.hasClass("tabs-block__select") }
             .flatMap { $0.all { $0.tag == "span" } }
@@ -908,7 +923,7 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
                 return
             }
             result.append(GermanHoster(name: display, url: url, referer: page, resolve: {
-                guard let target = await Self.resolveDownloadGate(url, referer: page) else {
+                guard let target = await Self.resolveDownloadGate(url, referer: page, session: session) else {
                     throw AppError.providerUnavailable("MEGAKino verlangt für diesen Stream ein VPN")
                 }
                 return try await HosterExtractor.resolve(target, referer: url, serverName: display)
@@ -962,8 +977,8 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
         return result
     }
 
-    private static func resolveDownloadGate(_ url: URL, referer: URL) async -> URL? {
-        guard let html = try? await GermanScrape.client.page(url, referer: referer) else { return nil }
+    private static func resolveDownloadGate(_ url: URL, referer: URL, session: Session) async -> URL? {
+        guard let html = try? await page(url, referer: referer, session: session) else { return nil }
         let tree = AnimeHTML.parse(html)
         let text = tree.text
         if text.localizedCaseInsensitiveContains("VPN"),
