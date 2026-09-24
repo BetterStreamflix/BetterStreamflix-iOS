@@ -402,6 +402,7 @@ final class AppEnvironment: ObservableObject {
         registry = ProviderRegistry(providers: [provider], selectedProviderID: provider.id)
         subtitleRegistry = SubtitleProviderRegistry(providers: [
             SubDLSubtitleProvider(),
+            OpenSubtitlesSubtitleProvider(),
             WizdomSubtitleProvider(),
             KtuvitSubtitleProvider(),
             StremioSubtitleProvider(),

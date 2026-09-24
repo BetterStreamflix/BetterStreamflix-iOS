@@ -12,100 +12,6 @@ enum CatalogSourcePreference: String, CaseIterable, Identifiable {
     }
 }
 
-enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
-    case streamingCommunity
-    case hiAnime
-    case anikoto
-    case animeIL
-    case stremio
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .streamingCommunity: "StreamingCommunity"
-        case .hiAnime: "HiAnime"
-        case .anikoto: "Anikoto"
-        case .animeIL: "AnimeIL"
-        case .stremio: "Stremio"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .streamingCommunity: "Primary stream resolver for most titles"
-        case .hiAnime: "Anime playback (English / Japanese)"
-        case .anikoto: "Alternate anime resolver"
-        case .animeIL: "Hebrew anime streams"
-        case .stremio: "Addon-backed streams and extras"
-        }
-    }
-
-    var defaultsKey: String { "playback.provider.\(rawValue).enabled" }
-
-    var defaultEnabled: Bool { true }
-
-    /// Matches provider type filtering in `ProviderRegistry.playbackProviders`.
-    var registryMatchIDs: [String] {
-        switch self {
-        case .streamingCommunity: ["streamingcommunity"]
-        case .hiAnime: ["hianime"]
-        case .anikoto: ["anikoto"]
-        case .animeIL: ["animeil"]
-        case .stremio: ["external-streams", "stremio"]
-        }
-    }
-
-    func matches(providerID: String) -> Bool {
-        let lowered = providerID.lowercased()
-        return registryMatchIDs.contains { lowered.contains($0) }
-    }
-}
-
-enum AppSetupStore {
-    static let completedKey = "setup.completed"
-    static let catalogSourceKey = "catalog.source"
-
-    static var isCompleted: Bool {
-        get {
-            if UserDefaults.standard.object(forKey: completedKey) != nil {
-                return UserDefaults.standard.bool(forKey: completedKey)
-            }
-            // Existing installs from earlier builds skip onboarding once.
-            let looksLikeReturningUser =
-                UserDefaults.standard.object(forKey: "appearance.themeColor") != nil
-                || UserDefaults.standard.object(forKey: "provider.streamingcommunity.domain") != nil
-                || UserDefaults.standard.object(forKey: "player.autoNext") != nil
-            if looksLikeReturningUser {
-                UserDefaults.standard.set(true, forKey: completedKey)
-                return true
-            }
-            return false
-        }
-        set { UserDefaults.standard.set(newValue, forKey: completedKey) }
-    }
-
-    static var catalogSource: CatalogSourcePreference {
-        get {
-            CatalogSourcePreference(
-                rawValue: UserDefaults.standard.string(forKey: catalogSourceKey) ?? ""
-            ) ?? .tmdb
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: catalogSourceKey) }
-    }
-
-    static func isPlaybackSourceEnabled(_ source: PlaybackSourcePreferenceID) -> Bool {
-        if UserDefaults.standard.object(forKey: source.defaultsKey) == nil {
-            return source.defaultEnabled
-        }
-        return UserDefaults.standard.bool(forKey: source.defaultsKey)
-    }
-
-    static func setPlaybackSource(_ source: PlaybackSourcePreferenceID, enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: source.defaultsKey)
-    }
-}
-
 struct FirstLaunchSetupView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -254,18 +160,15 @@ struct FirstLaunchSetupView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Catalog & sources")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Browsing uses TMDB. Advanced sources power stream resolution when you play.")
+                Text("Browsing uses TMDB. German sources are first-class for playback — same as Android BetterStreamflix.")
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Languages / main catalog")
+                    Text("Main catalog")
                         .font(.headline.weight(.semibold))
                     ForEach(CatalogSourcePreference.allCases) { source in
                         catalogSourceRow(source)
                     }
-                    Text("Only TMDB is available on the main path. Additional catalog providers are not offered here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -273,37 +176,36 @@ struct FirstLaunchSetupView: View {
                     in: RoundedRectangle(cornerRadius: 20, style: .continuous)
                 )
 
+                providerGroupCard(
+                    title: "German sources",
+                    caption: "Enabled by default. SerienStream, AniWorld, FilmPalast, and the full DE set.",
+                    sources: PlaybackSourcePreferenceID.sources(in: .german)
+                )
+
+                providerGroupCard(
+                    title: "Core resolvers",
+                    caption: "StreamingCommunity, anime resolvers, and Stremio addons.",
+                    sources: PlaybackSourcePreferenceID.sources(in: .core),
+                    includeDomainField: true
+                )
+
                 DisclosureGroup(isExpanded: $showAdvancedProviders) {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("StreamingCommunity domain")
-                            .font(.subheadline.weight(.semibold))
-                        TextField("streamingunity.win", text: $providerDomainDraft)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .padding(12)
-                            .background(AppTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 12))
-                        if let providerDomainError {
-                            Text(providerDomainError)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-
-                        ForEach(PlaybackSourcePreferenceID.allCases) { source in
-                            Toggle(isOn: playbackBinding(for: source)) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(source.title)
-                                        .font(.subheadline.weight(.semibold))
-                                    Text(source.subtitle)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .tint(environment.theme.accent)
+                        ForEach(
+                            [ProviderLanguageGroup.english, .italian, .spanish, .french, .polish],
+                            id: \.self
+                        ) { group in
+                            providerGroupCard(
+                                title: group.title,
+                                caption: nil,
+                                sources: PlaybackSourcePreferenceID.sources(in: group),
+                                compact: true
+                            )
                         }
                     }
                     .padding(.top, 10)
                 } label: {
-                    Label("Advanced providers", systemImage: "slider.horizontal.3")
+                    Label("Other languages", systemImage: "globe")
                         .font(.headline.weight(.semibold))
                 }
                 .padding(16)
@@ -314,6 +216,56 @@ struct FirstLaunchSetupView: View {
             }
             .padding(22)
         }
+    }
+
+    @ViewBuilder
+    private func providerGroupCard(
+        title: String,
+        caption: String?,
+        sources: [PlaybackSourcePreferenceID],
+        includeDomainField: Bool = false,
+        compact: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 10 : 12) {
+            Text(title)
+                .font(.headline.weight(.semibold))
+            if let caption {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if includeDomainField {
+                Text("StreamingCommunity domain")
+                    .font(.subheadline.weight(.semibold))
+                TextField("streamingunity.win", text: $providerDomainDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(AppTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 12))
+                if let providerDomainError {
+                    Text(providerDomainError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            ForEach(sources) { source in
+                Toggle(isOn: playbackBinding(for: source)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(source.title)
+                            .font(.subheadline.weight(.semibold))
+                        Text(source.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(environment.theme.accent)
+            }
+        }
+        .padding(compact ? 12 : 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffectWithFallback(
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
     }
 
     private var bottomBar: some View {
@@ -418,45 +370,60 @@ struct ProvidersSettingsSection: View {
     @State private var playbackToggles: [PlaybackSourcePreferenceID: Bool] = [:]
 
     var body: some View {
-        Section("Catalog & Providers") {
-            LabeledContent("Main catalog") {
-                Text(AppSetupStore.catalogSource.title)
-                    .foregroundStyle(.secondary)
-            }
-            Text("Languages and browsing use TMDB only. Playback sources below can be toggled independently.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            TextField("StreamingCommunity domain", text: $providerDomainDraft)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .onSubmit { Task { await saveDomain() } }
-
-            Button("Apply domain") {
-                Task { await saveDomain() }
-            }
-            if let providerDomainError {
-                Text(providerDomainError)
+        Group {
+            Section("Catalog & Providers") {
+                LabeledContent("Main catalog") {
+                    Text(AppSetupStore.catalogSource.title)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Browsing uses TMDB. German playback sources are first-class; other languages are optional.")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.secondary)
+
+                TextField("StreamingCommunity domain", text: $providerDomainDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onSubmit { Task { await saveDomain() } }
+
+                Button("Apply domain") {
+                    Task { await saveDomain() }
+                }
+                if let providerDomainError {
+                    Text(providerDomainError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
 
-            ForEach(PlaybackSourcePreferenceID.allCases) { source in
-                Toggle(isOn: playbackBinding(for: source)) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(source.title)
-                        Text(source.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            Section("German sources") {
+                ForEach(PlaybackSourcePreferenceID.sources(in: .german)) { source in
+                    providerToggle(source)
+                }
+            }
+
+            Section("Core resolvers") {
+                ForEach(PlaybackSourcePreferenceID.sources(in: .core)) { source in
+                    providerToggle(source)
+                }
+            }
+
+            ForEach(
+                [ProviderLanguageGroup.english, .italian, .spanish, .french, .polish],
+                id: \.self
+            ) { group in
+                Section(group.title) {
+                    ForEach(PlaybackSourcePreferenceID.sources(in: group)) { source in
+                        providerToggle(source)
                     }
                 }
-                .tint(environment.theme.accent)
             }
 
-            Button {
-                showSetup = true
-            } label: {
-                Label("Open setup guide", systemImage: "sparkles")
+            Section {
+                Button {
+                    showSetup = true
+                } label: {
+                    Label("Open setup guide", systemImage: "sparkles")
+                }
             }
         }
         .listRowBackground(AppTheme.surface)
@@ -474,6 +441,19 @@ struct ProvidersSettingsSection: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    @ViewBuilder
+    private func providerToggle(_ source: PlaybackSourcePreferenceID) -> some View {
+        Toggle(isOn: playbackBinding(for: source)) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(source.title)
+                Text(source.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .tint(environment.theme.accent)
     }
 
     private func playbackBinding(for source: PlaybackSourcePreferenceID) -> Binding<Bool> {
