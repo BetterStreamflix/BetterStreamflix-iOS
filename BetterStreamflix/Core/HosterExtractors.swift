@@ -135,6 +135,25 @@ struct HosterResponse: Sendable {
 
     var text: String { String(decoding: data, as: UTF8.self) }
     func header(_ name: String) -> String? { headers[name.lowercased()] }
+
+    /// Cookies straight off the response. Sites that mint a CSRF pair cannot rely
+    /// on the shared jar, which `URLSession` only populates on some platforms.
+    var cookies: [HTTPCookie] {
+        guard let raw = header("set-cookie") else { return [] }
+        return HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": raw], for: url)
+    }
+
+    func cookie(named name: String) -> String? {
+        guard let value = cookies.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })?.value else {
+            return nil
+        }
+        return value.removingPercentEncoding ?? value
+    }
+
+    var cookieHeader: String? {
+        let pairs = cookies.map { "\($0.name)=\($0.value)" }
+        return pairs.isEmpty ? nil : pairs.joined(separator: "; ")
+    }
 }
 
 extension URL {
