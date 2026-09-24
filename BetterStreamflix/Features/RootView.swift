@@ -24,8 +24,8 @@ struct RootView: View {
     @State private var searchReturnToRootRequest = 0
     @State private var searchIsShowingDetails = false
     @State private var isHomeReady = false
-    @State private var pendingAutomaticUpdate: AppUpdateInfo?
-    @State private var automaticUpdateRelease: AppUpdateInfo?
+    @State private var pendingAutomaticUpdate: GitHubRelease?
+    @State private var automaticUpdateRelease: GitHubRelease?
     @AppStorage("updates.skippedReleaseTag") private var skippedUpdateTag = ""
 
     var body: some View {
@@ -82,7 +82,6 @@ struct RootView: View {
             }
             .tint(environment.theme.accent)
             .background {
-                // Search is the 5th tab (0-based index 4) after Library was added.
                 TabBarTapObserver(tabIndex: 4) {
                     guard selectedTab == .search else { return }
                     if searchIsShowingDetails {
@@ -151,28 +150,27 @@ struct RootView: View {
     }
 
     private func checkForUpdatesAtLaunch() async {
+        // Only auto-prompt when the Releases API is reachable without auth.
+        // On a private app repo this quietly no-ops; Settings still offers a
+        // Releases CTA that never needs a PAT in the app.
         do {
-            let update = try await UpdateFeedClient().latestUpdate()
+            let release = try await GitHubReleaseClient().latestRelease()
             let currentVersion = Bundle.main.object(
                 forInfoDictionaryKey: "CFBundleShortVersionString"
             ) as? String ?? "0"
-            let currentBuild = Bundle.main.object(
-                forInfoDictionaryKey: "CFBundleVersion"
-            ) as? String ?? "0"
-            guard UpdateFeedClient.shouldOfferUpdate(
-                update: update,
+            guard UpdateCheckService.shouldOfferUpdate(
+                tagName: release.tagName,
                 currentVersion: currentVersion,
-                currentBuild: currentBuild,
                 skippedTagName: skippedUpdateTag
             ) else { return }
 
             if isHomeReady {
-                automaticUpdateRelease = update
+                automaticUpdateRelease = release
             } else {
-                pendingAutomaticUpdate = update
+                pendingAutomaticUpdate = release
             }
         } catch {
-            // Launch continues when the public update feed is unavailable.
+            // Launch continues normally when Releases cannot be queried.
         }
     }
 }

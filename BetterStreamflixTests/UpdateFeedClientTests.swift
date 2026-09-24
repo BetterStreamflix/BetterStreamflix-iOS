@@ -1,83 +1,70 @@
 import Foundation
 import Testing
 
-@Suite("Public update feed")
+@Suite("Update check service")
 struct UpdateFeedClientTests {
-    @Test("Parses ios/latest.json fields")
-    func parsesFeed() async throws {
+    @Test("Treats a newer GitHub release as an available update")
+    func newerRelease() async {
         let transport = FeedRecordingTransport(data: Data(
+            """
+            {
+              "tag_name": "v0.0.2",
+              "name": "BetterStreamflix 0.0.2",
+              "body": "## Changes\\n\\n- Newer build",
+              "html_url": "https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases/tag/v0.0.2"
+            }
+            """.utf8
+        ))
+        let outcome = await UpdateCheckService(
+            client: GitHubReleaseClient(client: transport)
+        ).evaluate(currentVersion: "0.0.1", currentBuild: "5")
+
+        guard case let .newerRelease(release) = outcome else {
+            Issue.record("Expected newerRelease")
+            return
+        }
+        #expect(release.tagName == "v0.0.2")
+    }
+
+    @Test("Falls back to the Releases CTA when the API is unavailable")
+    func openReleasesFallback() async {
+        let transport = FeedFailingTransport()
+        let outcome = await UpdateCheckService(
+            client: GitHubReleaseClient(client: transport)
+        ).evaluate(currentVersion: "0.0.1", currentBuild: "5")
+
+        #expect(outcome == .openReleases(version: "0.0.1", build: "5"))
+    }
+
+    @Test("Parses bookkeeping AppUpdateInfo JSON used by CI")
+    func parsesBookkeepingJSON() throws {
+        let data = Data(
             """
             {
               "version": "0.0.1",
               "build": "12",
               "releasedAt": "2026-09-24T08:00:00Z",
-              "notes": "## BetterStreamflix 0.0.1\\n\\n- Premium update",
+              "notes": "notes",
               "releasePageUrl": "https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases/tag/v0.0.1",
               "ipaAssetName": "BetterStreamflix-0.0.1-unsigned.ipa"
             }
             """.utf8
-        ))
-
-        let update = try await UpdateFeedClient(
-            feedURL: SupportLinks.iosUpdateFeed,
-            client: transport
-        ).latestUpdate()
-
-        #expect(update.version == "0.0.1")
-        #expect(update.build == "12")
-        #expect(update.ipaAssetName.contains("unsigned.ipa"))
-        #expect(update.tagName == "v0.0.1")
-        let request = await transport.lastRequest
-        #expect(request?.url?.absoluteString == SupportLinks.iosUpdateFeed.absoluteString)
-    }
-
-    @Test("Offers updates for newer version or same version with newer build")
-    func comparesVersionAndBuild() {
-        let newerVersion = AppUpdateInfo(
-            version: "0.0.2",
-            build: "1",
-            releasedAt: "2026-01-01T00:00:00Z",
-            notes: "notes",
-            releasePageUrl: SupportLinks.githubRepository,
-            ipaAssetName: "BetterStreamflix-0.0.2-unsigned.ipa"
         )
-        let newerBuild = AppUpdateInfo(
-            version: "0.0.1",
-            build: "9",
-            releasedAt: "2026-01-01T00:00:00Z",
-            notes: "notes",
-            releasePageUrl: SupportLinks.githubRepository,
-            ipaAssetName: "BetterStreamflix-0.0.1-unsigned.ipa"
-        )
-
-        #expect(UpdateFeedClient.isNewer(update: newerVersion, than: "0.0.1", currentBuild: "99"))
-        #expect(UpdateFeedClient.isNewer(update: newerBuild, than: "0.0.1", currentBuild: "8"))
-        #expect(!UpdateFeedClient.isNewer(update: newerBuild, than: "0.0.1", currentBuild: "9"))
-        #expect(UpdateFeedClient.shouldOfferUpdate(
-            update: newerBuild,
-            currentVersion: "0.0.1",
-            currentBuild: "8",
-            skippedTagName: ""
-        ))
-        #expect(!UpdateFeedClient.shouldOfferUpdate(
-            update: newerBuild,
-            currentVersion: "0.0.1",
-            currentBuild: "8",
-            skippedTagName: "v0.0.1"
-        ))
+        let info = try JSONDecoder().decode(AppUpdateInfo.self, from: data)
+        #expect(info.version == "0.0.1")
+        #expect(info.build == "12")
+        #expect(info.tagName == "v0.0.1")
     }
 }
 
 private actor FeedRecordingTransport: HTTPClientProtocol {
     private let data: Data
-    private(set) var lastRequest: URLRequest?
 
     init(data: Data) {
         self.data = data
     }
 
     func data(for request: URLRequest) async throws -> HTTPResponse {
-        lastRequest = request
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
@@ -85,5 +72,11 @@ private actor FeedRecordingTransport: HTTPClientProtocol {
             headerFields: nil
         )!
         return HTTPResponse(data: data, response: response)
+    }
+}
+
+private actor FeedFailingTransport: HTTPClientProtocol {
+    func data(for request: URLRequest) async throws -> HTTPResponse {
+        throw AppError.providerUnavailable("HTTP 404")
     }
 }

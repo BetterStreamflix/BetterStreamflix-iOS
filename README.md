@@ -29,23 +29,18 @@ Every push to `main` runs **Unsigned IPA** (`.github/workflows/unsigned-ipa.yml`
 1. Builds an unsigned IPA via `./build-unsigned-ipa.sh`
 2. Uploads the Actions artifact
 3. Publishes a GitHub Release `v{version}` with the IPA attached
-4. Updates the public feed at [BetterStreamflix-updates](https://github.com/BetterStreamflix/BetterStreamflix-updates) → `ios/latest.json`
+4. Writes bookkeeping `ios/latest.json` to the private [BetterStreamflix-updates](https://github.com/BetterStreamflix/BetterStreamflix-updates) repo (CI token only — not used by the app)
 
-### Download from Actions
+### Download
 
-1. Open [Actions](https://github.com/BetterStreamflix/BetterStreamflix-iOS/actions)
-2. Open the latest **Unsigned IPA** run
-3. Download `BetterStreamflix-0.0.1-unsigned` (or the matching version artifact)
+- **Actions:** repo → Actions → Unsigned IPA → download the artifact
+- **Releases:** [Releases](https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases) → download the `.ipa`
 
-### Download from Releases
+### In-app Check for Updates
 
-Open [Releases](https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases) and download the IPA asset from the latest tag.
-
-In-app **Check for updates** reads the public JSON feed (no authentication).
+Settings → About → **Check for updates** shows the installed version and opens **GitHub Releases** so you can download the newest unsigned IPA. No personal access token is embedded in the app.
 
 Locally: `./build-unsigned-ipa.sh 0.0.1`.
-
-The IPA is unsigned — install via your own signing/sideload flow.
 
 ## Features
 
@@ -54,7 +49,7 @@ The IPA is unsigned — install via your own signing/sideload flow.
 - Movies & Series catalogs, Search with recent queries
 - Detail with cast carousel, seasons/episodes, Play / My List
 - AVPlayer HLS with source/quality, double-tap ±10s, volume/brightness pans, PiP / AirPlay
-- Settings / About: themes, languages, backup, updates, community links, credits
+- Settings / About: themes, languages, backup, updates via Releases, community links, credits
 
 ## Legal
 

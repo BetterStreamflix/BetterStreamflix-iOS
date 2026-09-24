@@ -522,23 +522,24 @@ struct SettingsView: View {
         isCheckingForUpdates = true
         defer { isCheckingForUpdates = false }
 
-        do {
-            let update = try await UpdateFeedClient().latestUpdate()
-            let currentVersion = Bundle.main.object(
-                forInfoDictionaryKey: "CFBundleShortVersionString"
-            ) as? String ?? "0"
-            let currentBuild = Bundle.main.object(
-                forInfoDictionaryKey: "CFBundleVersion"
-            ) as? String ?? "0"
-            updateCheckResult = UpdateFeedClient.isNewer(
-                update: update,
-                than: currentVersion,
-                currentBuild: currentBuild
-            ) ? .updateAvailable(update) : .upToDate(currentVersion)
-        } catch where error.isCancellation {
-            return
-        } catch {
-            updateCheckResult = .failed
+        let currentVersion = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "0.0.1"
+        let currentBuild = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "1"
+
+        let outcome = await UpdateCheckService().evaluate(
+            currentVersion: currentVersion,
+            currentBuild: currentBuild
+        )
+        switch outcome {
+        case .newerRelease(let release):
+            updateCheckResult = .updateAvailable(release)
+        case .upToDate(let version, let build):
+            updateCheckResult = .upToDate(version: version, build: build)
+        case .openReleases(let version, let build):
+            updateCheckResult = .openReleases(version: version, build: build)
         }
     }
 }
@@ -576,15 +577,15 @@ struct UserDataBackupNotice: Identifiable {
 }
 
 enum UpdateCheckResult: Identifiable {
-    case updateAvailable(AppUpdateInfo)
-    case upToDate(String)
-    case failed
+    case updateAvailable(GitHubRelease)
+    case upToDate(version: String, build: String)
+    case openReleases(version: String, build: String)
 
     var id: String {
         switch self {
-        case .updateAvailable(let update): "available-\(update.id)"
-        case .upToDate(let version): "current-\(version)"
-        case .failed: "failed"
+        case .updateAvailable(let release): "available-\(release.tagName)"
+        case .upToDate(let version, let build): "current-\(version)-\(build)"
+        case .openReleases(let version, let build): "releases-\(version)-\(build)"
         }
     }
 }
@@ -613,20 +614,29 @@ struct UpdateCheckSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     switch result {
-                    case .updateAvailable(let update):
-                        updateAvailableContent(update)
-                    case .upToDate(let version):
+                    case .updateAvailable(let release):
+                        updateAvailableContent(release)
+                    case .upToDate(let version, let build):
                         statusContent(
                             icon: "checkmark.circle.fill",
                             title: "You're up to date",
-                            message: "BetterStreamflix \(version) is the newest available version."
+                            message: "BetterStreamflix \(version) (\(build)) matches the newest release we could confirm."
                         )
-                    case .failed:
+                        releasesCTA(title: "Browse Releases")
+                    case .openReleases(let version, let build):
                         statusContent(
-                            icon: "exclamationmark.triangle.fill",
-                            title: "Unable to check for updates",
-                            message: "Check your internet connection and try again. Updates use the public BetterStreamflix feed."
+                            icon: "arrow.down.app.fill",
+                            title: "Updates on GitHub Releases",
+                            message: "You're running BetterStreamflix \(version) (\(build)). New unsigned IPAs are published on the repository Releases page — open it to download the latest build."
                         )
+                        releasesCTA(title: "View Releases")
+                        Button {
+                            openURL(SupportLinks.githubLatestRelease)
+                        } label: {
+                            Label("Open latest release", systemImage: "link")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -646,7 +656,7 @@ struct UpdateCheckSheet: View {
     }
 
     @ViewBuilder
-    private func updateAvailableContent(_ update: AppUpdateInfo) -> some View {
+    private func updateAvailableContent(_ release: GitHubRelease) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.down.circle.fill")
                 .foregroundStyle(accentColor)
@@ -655,22 +665,18 @@ struct UpdateCheckSheet: View {
         }
         .font(.title2.bold())
 
-        Text("BetterStreamflix \(update.version) (\(update.build))")
+        Text(release.name.flatMap { $0.isEmpty ? nil : $0 } ?? release.tagName)
             .font(.headline)
             .foregroundStyle(accentColor)
 
-        Text(update.ipaAssetName)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
         Divider()
 
-        ReleaseNotesMarkdownView(source: update.notes, accentColor: accentColor)
+        ReleaseNotesMarkdownView(source: release.body, accentColor: accentColor)
             .frame(maxWidth: .infinity, alignment: .leading)
             .textSelection(.enabled)
 
         Button {
-            openURL(update.releasePageUrl)
+            openURL(release.htmlURL)
         } label: {
             Label("Open release page", systemImage: "safari")
                 .frame(maxWidth: .infinity)
@@ -686,6 +692,16 @@ struct UpdateCheckSheet: View {
                 .frame(maxWidth: .infinity)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func releasesCTA(title: String) -> some View {
+        Button {
+            openURL(SupportLinks.githubReleases)
+        } label: {
+            Label(title, systemImage: "safari")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(AppPrimaryButtonStyle(glow: accentColor))
     }
 
     private func statusContent(icon: String, title: String, message: String) -> some View {
