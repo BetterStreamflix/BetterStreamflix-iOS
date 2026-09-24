@@ -484,20 +484,21 @@ struct FilmoPlaybackProvider: GermanPlaybackProvider {
     }
 
     /// `POST /n` exchanges the chip payload for a one-shot token; `/n/{token}`
-    /// then redirects to the hoster.
+    /// then redirects to the hoster. The CSRF meta tag and the `XSRF-TOKEN`
+    /// cookie have to come from the same response, so the session cookies are
+    /// replayed by hand rather than trusted to the shared jar.
     private static func mintedSource(payload: String, name: String, page: URL) async throws -> PlaybackSource {
-        let home = try await GermanScrape.client.page(base, referer: base)
-        let csrf = AnimeHTML.parse(home).first { $0.tag == "meta" && $0["name"] == "csrf-token" }?["content"] ?? ""
-        let xsrf = GermanScrape.client.cookie(named: "XSRF-TOKEN", for: base) ?? ""
+        let home = try await GermanScrape.client.get(base, referer: base)
+        let csrf = AnimeHTML.parse(home.text).first { $0.tag == "meta" && $0["name"] == "csrf-token" }?["content"] ?? ""
+        let xsrf = home.cookie(named: "XSRF-TOKEN") ?? GermanScrape.client.cookie(named: "XSRF-TOKEN", for: base) ?? ""
         guard !csrf.isEmpty, !xsrf.isEmpty else { throw AppError.providerUnavailable("Filmo session unavailable") }
 
+        var session: [String: String] = ["X-CSRF-TOKEN": csrf, "X-XSRF-TOKEN": xsrf]
+        if let cookies = home.cookieHeader { session["Cookie"] = cookies }
+
         guard let mint = GermanScrape.url(base, "n") else { throw AppError.invalidURL }
-        let request = HosterHTTP.jsonRequest(
-            url: mint,
-            referer: base,
-            headers: ["X-CSRF-TOKEN": csrf, "X-XSRF-TOKEN": xsrf],
-            body: ["p": payload]
-        )
+        var request = HosterHTTP.jsonRequest(url: mint, referer: base, headers: session, body: ["p": payload])
+        request.httpShouldHandleCookies = home.cookieHeader == nil
         let response = try await GermanScrape.client.send(request)
         guard let object = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any],
               let token = GermanScrape.scalar(object["x"]),
@@ -505,7 +506,12 @@ struct FilmoPlaybackProvider: GermanPlaybackProvider {
             throw AppError.noStream
         }
 
-        let redirect = try await GermanScrape.client.get(tokenURL, referer: page)
+        var redirectRequest = HosterHTTP.request(url: tokenURL, referer: page)
+        if let cookies = home.cookieHeader {
+            redirectRequest.setValue(cookies, forHTTPHeaderField: "Cookie")
+            redirectRequest.httpShouldHandleCookies = false
+        }
+        let redirect = try await GermanScrape.client.send(redirectRequest)
         guard redirect.url != tokenURL else { throw AppError.noStream }
         return try await HosterExtractor.resolve(redirect.url, referer: page, serverName: name)
     }
