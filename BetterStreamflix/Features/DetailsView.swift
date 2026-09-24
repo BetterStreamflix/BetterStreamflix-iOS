@@ -336,22 +336,33 @@ struct DetailsView: View {
 
     @ViewBuilder
     private var detailChromeOverlay: some View {
+        // One shared top-leading origin for floating + sticky back so they never jump.
         let topInset = max(ScreenMetrics.topSafeAreaInset, 47)
+        let leading: CGFloat = 12
+        let rowTop: CGFloat = 2
+        let compactRowBottom: CGFloat = 4
+
         VStack(spacing: 0) {
-            if showsCompactHeader {
-                HStack(spacing: 10) {
-                    DetailBackControl(action: { dismiss() })
+            HStack(spacing: 0) {
+                DetailBackControl(action: { dismiss() })
+                if showsCompactHeader {
                     Spacer(minLength: 0)
                     compactHeaderTitle
-                        .frame(maxWidth: 220)
+                        .frame(maxWidth: 200)
                     Spacer(minLength: 0)
-                    Color.clear.frame(width: 40, height: 40)
+                    Color.clear
+                        .frame(width: DetailBackControl.size, height: DetailBackControl.size)
+                } else {
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, topInset + 4)
-                .padding(.bottom, 10)
-                .frame(maxWidth: .infinity)
-                .background {
+            }
+            .padding(.leading, leading)
+            .padding(.trailing, leading)
+            .padding(.top, rowTop)
+            .padding(.bottom, showsCompactHeader ? compactRowBottom : 0)
+            .frame(maxWidth: .infinity)
+            .background {
+                if showsCompactHeader {
                     Rectangle()
                         .fill(.ultraThinMaterial)
                         .overlay(alignment: .bottom) {
@@ -361,17 +372,9 @@ struct DetailsView: View {
                         }
                         .ignoresSafeArea(edges: .top)
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            } else {
-                HStack {
-                    DetailBackControl(action: { dismiss() })
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, 12)
-                .padding(.top, topInset + 2)
-                .transition(.opacity)
             }
         }
+        .padding(.top, topInset)
         .frame(maxWidth: .infinity, alignment: .top)
         .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactHeader)
     }
@@ -382,11 +385,11 @@ struct DetailsView: View {
             title: model.item.title,
             logoData: tmdbTitleLogoData,
             showsFallback: isTitleLogoResolved,
-            maximumLogoWidth: 168,
-            maximumLogoHeight: 28
+            maximumLogoWidth: 150,
+            maximumLogoHeight: 22
         ) {
             Text(model.item.title)
-                .font(.subheadline.weight(.semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -765,14 +768,16 @@ private struct DetailsHeroScrollOffsetKey: PreferenceKey {
 }
 
 struct DetailBackControl: View {
+    static let size: CGFloat = 36
+
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
+                .frame(width: Self.size, height: Self.size)
                 .contentShape(Circle())
                 .background {
                     Circle()
@@ -783,7 +788,7 @@ struct DetailBackControl: View {
                     Circle()
                         .stroke(.white.opacity(0.28), lineWidth: 0.8)
                 }
-                .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+                .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Back")
