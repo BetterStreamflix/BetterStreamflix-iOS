@@ -133,12 +133,17 @@ enum AppTheme: String, CaseIterable, Identifiable {
             return
         }
         switch persistedValue {
-        case "white": self = .silver
-        case "purple": self = .violet
-        case "green": self = .aurora
-        case "pink": self = .rose
-        case "red": self = .ember
-        case "blue": self = .blue
+        case "white", "streamSilver": self = .silver
+        case "purple", "streamViolet": self = .violet
+        case "green", "streamAurora": self = .aurora
+        case "pink", "streamRose": self = .rose
+        case "red", "streamEmber": self = .ember
+        case "blue", "streamBlue": self = .blue
+        case "streamOcean": self = .ocean
+        case "streamMint": self = .mint
+        case "streamGold": self = .gold
+        case "streamCrimson": self = .crimson
+        case "streamIndigo": self = .indigo
         default: self = .blue
         }
     }

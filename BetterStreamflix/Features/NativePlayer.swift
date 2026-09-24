@@ -1,4 +1,5 @@
 @preconcurrency import AVKit
+@preconcurrency import AVFoundation
 @preconcurrency import Network
 import Combine
 @preconcurrency import MediaPlayer
@@ -3645,6 +3646,28 @@ struct NativePlayerController: UIViewControllerRepresentable {
         private var lastIsLandscape: Bool?
         private let onZoomChanged: (Bool) -> Void
         let onDismiss: () -> Void
+        private var panStartLocation: CGPoint = .zero
+        private var panMode: VerticalPanMode?
+        private var initialVolume: Float = 0
+        private var initialBrightness: CGFloat = UIScreen.main.brightness
+        private let gestureFeedbackLabel: UILabel = {
+            let label = UILabel()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.textAlignment = .center
+            label.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+            label.textColor = .white
+            label.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+            label.layer.cornerRadius = 12
+            label.clipsToBounds = true
+            label.alpha = 0
+            label.isAccessibilityElement = false
+            return label
+        }()
+
+        private enum VerticalPanMode {
+            case volume
+            case brightness
+        }
 
         init(
             availableQualities: [StreamQuality],
@@ -3690,6 +3713,16 @@ struct NativePlayerController: UIViewControllerRepresentable {
             tapGesture.cancelsTouchesInView = false
             tapGesture.delegate = self
             controller.view.addGestureRecognizer(tapGesture)
+            let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(playerDoubleTapped(_:)))
+            doubleTapGesture.numberOfTapsRequired = 2
+            doubleTapGesture.cancelsTouchesInView = false
+            doubleTapGesture.delegate = self
+            controller.view.addGestureRecognizer(doubleTapGesture)
+            tapGesture.require(toFail: doubleTapGesture)
+            let panGesture = UIPanGestureRecognizer(target: self, action: #selector(playerPanned(_:)))
+            panGesture.cancelsTouchesInView = false
+            panGesture.delegate = self
+            controller.view.addGestureRecognizer(panGesture)
             let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(playerPinched(_:)))
             pinchGesture.cancelsTouchesInView = false
             pinchGesture.delegate = self
@@ -3708,6 +3741,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             overlay.addSubview(playbackErrorView)
             overlay.addSubview(settingsButton)
             overlay.addSubview(subtitleTimingControl)
+            overlay.addSubview(gestureFeedbackLabel)
             NSLayoutConstraint.activate([
                 bufferingIndicator.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
                 bufferingIndicator.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
@@ -3721,7 +3755,11 @@ struct NativePlayerController: UIViewControllerRepresentable {
                 subtitleTimingControl.trailingAnchor.constraint(equalTo: settingsButton.trailingAnchor),
                 subtitleTimingControl.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 10),
                 subtitleTimingControl.widthAnchor.constraint(equalToConstant: 156),
-                subtitleTimingControl.heightAnchor.constraint(equalToConstant: 44)
+                subtitleTimingControl.heightAnchor.constraint(equalToConstant: 44),
+                gestureFeedbackLabel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+                gestureFeedbackLabel.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 24),
+                gestureFeedbackLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+                gestureFeedbackLabel.heightAnchor.constraint(equalToConstant: 36)
             ])
         }
 
@@ -4155,6 +4193,78 @@ struct NativePlayerController: UIViewControllerRepresentable {
                 }
             }
             settingsButton.alpha > 0.1 ? hideSettingsButton() : showSettingsButton()
+        }
+
+        @objc private func playerDoubleTapped(_ gesture: UITapGestureRecognizer) {
+            guard let player, let view = gesture.view else { return }
+            let location = gesture.location(in: view)
+            let delta: Double = location.x < view.bounds.midX ? -10 : 10
+            let current = player.currentTime().seconds
+            guard current.isFinite else { return }
+            let target = max(0, current + delta)
+            player.seek(
+                to: CMTime(seconds: target, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
+            showGestureFeedback(delta < 0 ? "−10s" : "+10s")
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showSettingsButton()
+        }
+
+        @objc private func playerPanned(_ gesture: UIPanGestureRecognizer) {
+            guard let view = gesture.view else { return }
+            let translation = gesture.translation(in: view)
+            let location = gesture.location(in: view)
+
+            switch gesture.state {
+            case .began:
+                panStartLocation = location
+                panMode = nil
+                initialVolume = AVAudioSession.sharedInstance().outputVolume
+                initialBrightness = UIScreen.main.brightness
+            case .changed:
+                if panMode == nil {
+                    guard abs(translation.y) > abs(translation.x), abs(translation.y) > 12 else { return }
+                    panMode = panStartLocation.x < view.bounds.midX ? .brightness : .volume
+                }
+                let delta = -translation.y / max(view.bounds.height, 1)
+                switch panMode {
+                case .volume:
+                    let value = min(max(initialVolume + Float(delta), 0), 1)
+                    setSystemVolume(value)
+                    showGestureFeedback(String(format: "Volume %.0f%%", value * 100))
+                case .brightness:
+                    let value = min(max(initialBrightness + delta, 0), 1)
+                    UIScreen.main.brightness = value
+                    showGestureFeedback(String(format: "Brightness %.0f%%", value * 100))
+                case .none:
+                    break
+                }
+            case .ended, .cancelled, .failed:
+                panMode = nil
+                hideGestureFeedback()
+            default:
+                break
+            }
+        }
+
+        private func setSystemVolume(_ value: Float) {
+            let slider = systemVolumeHUDSuppressor.subviews.compactMap { $0 as? UISlider }.first
+            slider?.value = value
+        }
+
+        private func showGestureFeedback(_ text: String) {
+            gestureFeedbackLabel.text = "  \(text)  "
+            UIView.animate(withDuration: 0.15) {
+                self.gestureFeedbackLabel.alpha = 1
+            }
+        }
+
+        private func hideGestureFeedback() {
+            UIView.animate(withDuration: 0.25, delay: 0.35) {
+                self.gestureFeedbackLabel.alpha = 0
+            }
         }
 
         private func showSettingsButton() {

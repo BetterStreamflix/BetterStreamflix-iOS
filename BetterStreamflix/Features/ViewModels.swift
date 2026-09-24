@@ -354,8 +354,25 @@ final class SearchViewModel: ObservableObject {
     @Published private(set) var results: [MediaItem] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
+    @Published private(set) var recentSearches: [String] = UserDefaults.standard.stringArray(forKey: "search.recent") ?? []
     private var task: Task<Void, Never>?
     private var searchGeneration = 0
+
+    func clearRecentSearches() {
+        recentSearches = []
+        UserDefaults.standard.removeObject(forKey: "search.recent")
+    }
+
+    func applyRecentSearch(_ value: String) {
+        query = value
+    }
+
+    private func rememberSearch(_ value: String) {
+        var next = recentSearches.filter { $0.caseInsensitiveCompare(value) != .orderedSame }
+        next.insert(value, at: 0)
+        recentSearches = Array(next.prefix(8))
+        UserDefaults.standard.set(recentSearches, forKey: "search.recent")
+    }
 
     func search(environment: AppEnvironment) {
         task?.cancel()
@@ -371,7 +388,7 @@ final class SearchViewModel: ObservableObject {
         }
         task = Task { [weak self] in
             do {
-                try await Task.sleep(for: .milliseconds(350))
+                try await Task.sleep(for: .milliseconds(280))
             } catch {
                 return
             }
@@ -389,6 +406,7 @@ final class SearchViewModel: ObservableObject {
                 results = titles.map {
                     MediaItem.tmdbCatalogItem(from: $0)
                 }
+                rememberSearch(value)
             }
             catch where error.isCancellation { }
             catch {

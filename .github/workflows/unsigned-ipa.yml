@@ -9,9 +9,13 @@ on:
         description: "Marketing version for the IPA (leave empty to use project.yml)"
         required: false
         type: string
+      notes:
+        description: "Release notes Markdown (optional)"
+        required: false
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -33,8 +37,8 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Resolve version
-        id: version
+      - name: Resolve version and build
+        id: meta
         run: |
           set -euo pipefail
           INPUT="${{ github.event.inputs.version }}"
@@ -47,18 +51,105 @@ jobs:
             echo "Could not resolve marketing version." >&2
             exit 1
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building BetterStreamflix $VERSION (unsigned IPA)"
+          BUILD="${{ github.run_number }}"
+          {
+            echo "version=$VERSION"
+            echo "build=$BUILD"
+            echo "tag=v${VERSION}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building BetterStreamflix $VERSION ($BUILD) unsigned IPA"
 
       - name: Build unsigned IPA
         env:
-          BUILD_VERSION: ${{ steps.version.outputs.version }}
-        run: ./build-unsigned-ipa.sh "$BUILD_VERSION"
+          BUILD_VERSION: ${{ steps.meta.outputs.version }}
+          BUILD_NUMBER: ${{ steps.meta.outputs.build }}
+        run: ./build-unsigned-ipa.sh "$BUILD_VERSION" "$BUILD_NUMBER"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BetterStreamflix-${{ steps.version.outputs.version }}-unsigned
-          path: build/unsigned-ipa/${{ steps.version.outputs.version }}/BetterStreamflix-${{ steps.version.outputs.version }}-unsigned.ipa
+          name: BetterStreamflix-${{ steps.meta.outputs.version }}-unsigned
+          path: build/unsigned-ipa/${{ steps.meta.outputs.version }}/BetterStreamflix-${{ steps.meta.outputs.version }}-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          BUILD: ${{ steps.meta.outputs.build }}
+          NOTES_INPUT: ${{ github.event.inputs.notes }}
+        run: |
+          set -euo pipefail
+          IPA="build/unsigned-ipa/${VERSION}/BetterStreamflix-${VERSION}-unsigned.ipa"
+          NOTES_FILE="$(mktemp)"
+          if [[ -n "${NOTES_INPUT}" ]]; then
+            printf '%s\n' "$NOTES_INPUT" > "$NOTES_FILE"
+          else
+            cat > "$NOTES_FILE" <<EOF
+          ## BetterStreamflix ${VERSION}
+
+          Build ${BUILD}. Unsigned IPA for sideloading.
+
+          - Artifact: \`BetterStreamflix-${VERSION}-unsigned.ipa\`
+          - Install with your own signing / sideload flow
+          EOF
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes || true
+            git push origin ":refs/tags/${TAG}" || true
+          fi
+          gh release create "$TAG" "$IPA" \
+            --title "BetterStreamflix ${VERSION}" \
+            --notes-file "$NOTES_FILE" \
+            --latest
+
+      - name: Publish public update feed
+        env:
+          GH_TOKEN: ${{ secrets.UPDATES_WRITE_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          BUILD: ${{ steps.meta.outputs.build }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          NOTES_INPUT: ${{ github.event.inputs.notes }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "UPDATES_WRITE_TOKEN secret is required to publish ios/latest.json" >&2
+            exit 1
+          fi
+          WORK="$(mktemp -d)"
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/BetterStreamflix/BetterStreamflix-updates.git" "$WORK"
+          mkdir -p "$WORK/ios"
+          RELEASED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [[ -n "${NOTES_INPUT}" ]]; then
+            NOTES="$NOTES_INPUT"
+          else
+            NOTES="BetterStreamflix ${VERSION} build ${BUILD}."
+          fi
+          export WORK VERSION BUILD TAG RELEASED_AT NOTES
+          python3 - <<'PY'
+          import json, os
+          payload = {
+            "version": os.environ["VERSION"],
+            "build": os.environ["BUILD"],
+            "releasedAt": os.environ["RELEASED_AT"],
+            "notes": os.environ["NOTES"],
+            "releasePageUrl": f"https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases/tag/{os.environ['TAG']}",
+            "ipaAssetName": f"BetterStreamflix-{os.environ['VERSION']}-unsigned.ipa",
+          }
+          path = os.path.join(os.environ["WORK"], "ios", "latest.json")
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2)
+              handle.write("\n")
+          print("Wrote", path)
+          PY
+          git -C "$WORK" config user.name "BetterStreamflix"
+          git -C "$WORK" config user.email "333210020+BetterStreamflix@users.noreply.github.com"
+          git -C "$WORK" add ios/latest.json
+          if git -C "$WORK" diff --cached --quiet; then
+            echo "Update feed already current"
+          else
+            git -C "$WORK" commit -m "iOS ${VERSION} (${BUILD})"
+            git -C "$WORK" push origin HEAD:main
+          fi

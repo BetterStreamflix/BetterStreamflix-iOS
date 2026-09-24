@@ -4,8 +4,8 @@ import Testing
 @testable import BetterStreamflix
 
 /// Explicit opt-in because third-party availability is not a deterministic CI dependency.
-/// TEST_RUNNER_VELA_LIVE_STREAMS=1 xcodebuild ... -only-testing:BetterStreamflixTests/AnimeLivePlaybackTests test
-@Suite("Live anime playback", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VELA_LIVE_STREAMS"] == "1"))
+/// TEST_RUNNER_BETTERSTREAMFLIX_LIVE_STREAMS=1 xcodebuild ... -only-testing:BetterStreamflixTests/AnimeLivePlaybackTests test
+@Suite("Live anime playback", .serialized, .enabled(if: ProcessInfo.processInfo.environment["BETTERSTREAMFLIX_LIVE_STREAMS"] == "1"))
 struct AnimeLivePlaybackTests {
     @MainActor
     @Test(arguments: [AnimePlaybackProvider.Site.hiAnime, .anikoto])

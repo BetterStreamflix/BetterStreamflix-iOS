@@ -9,23 +9,34 @@ XCODE_PROJECT="$SCRIPT_DIR/BetterStreamflix.xcodeproj"
 SCHEME="BetterStreamflix"
 APP_NAME="BetterStreamflix"
 
-if [[ $# -gt 1 ]]; then
-    echo "Usage: $0 [version]" >&2
+if [[ $# -gt 2 ]]; then
+    echo "Usage: $0 [version] [build]" >&2
     exit 2
 fi
 
 # Prefer explicit arg, then BUILD_VERSION (CI), then interactive prompt.
 VERSION="${1:-${BUILD_VERSION:-}}"
+BUILD_NUMBER="${2:-${BUILD_NUMBER:-}}"
 if [[ -z "$VERSION" ]]; then
     if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
-        echo "Usage in CI: $0 <version>  or  BUILD_VERSION=<version> $0" >&2
+        echo "Usage in CI: $0 <version> [build]  or  BUILD_VERSION=<version> BUILD_NUMBER=<n> $0" >&2
         exit 2
     fi
-    read -r -p "What version should I build? (example: 2.0.0): " VERSION
+    read -r -p "What version should I build? (example: 0.0.1): " VERSION
+fi
+
+if [[ -z "$BUILD_NUMBER" ]]; then
+    BUILD_NUMBER="$(sed -nE 's/.*CURRENT_PROJECT_VERSION: ([0-9]+).*/\1/p' "$PROJECT_YAML" | head -1)"
+    BUILD_NUMBER="${BUILD_NUMBER:-1}"
 fi
 
 if [[ ! "$VERSION" =~ ^[0-9]+([.][0-9]+){0,2}$ ]]; then
     echo "Invalid version '$VERSION'. Use one to three numeric parts, such as 2, 2.1, or 2.1.3." >&2
+    exit 2
+fi
+
+if [[ ! "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+    echo "Invalid build number '$BUILD_NUMBER'." >&2
     exit 2
 fi
 
@@ -45,10 +56,17 @@ fi
 # Update both the checked-in Xcode project and the XcodeGen source of truth.
 sed -E -i '' "s/(MARKETING_VERSION = )[0-9]+([.][0-9]+){0,2};/\\1${VERSION};/g" "$PROJECT_FILE"
 sed -E -i '' "s/(MARKETING_VERSION: )[0-9]+([.][0-9]+){0,2}$/\\1${VERSION}/" "$PROJECT_YAML"
+sed -E -i '' "s/(CURRENT_PROJECT_VERSION = )[0-9]+;/\\1${BUILD_NUMBER};/g" "$PROJECT_FILE"
+sed -E -i '' "s/(CURRENT_PROJECT_VERSION: )[0-9]+$/\\1${BUILD_NUMBER}/" "$PROJECT_YAML"
 
 if [[ "$(grep -Fc "MARKETING_VERSION = ${VERSION};" "$PROJECT_FILE")" -ne "$PBX_MATCHES" ]] || \
    ! grep -Fq "MARKETING_VERSION: ${VERSION}" "$PROJECT_YAML"; then
     echo "The version update could not be verified. Stopping before the build." >&2
+    exit 1
+fi
+
+if ! grep -Fq "CURRENT_PROJECT_VERSION = ${BUILD_NUMBER};" "$PROJECT_FILE"; then
+    echo "The build number update could not be verified. Stopping before the build." >&2
     exit 1
 fi
 
@@ -60,7 +78,7 @@ IPA_PATH="$OUTPUT_DIR/${APP_NAME}-${VERSION}-unsigned.ipa"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$PACKAGE_DIR/Payload"
 
-echo "Version changed to $VERSION in the Xcode project."
+echo "Version changed to $VERSION ($BUILD_NUMBER) in the Xcode project."
 echo "Building an unsigned Release app..."
 
 xcodebuild \

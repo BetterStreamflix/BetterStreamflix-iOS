@@ -20,7 +20,6 @@
 		5357C6AC995464E109DA454E /* PlaybackDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */; };
 		5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */; };
 		59CC5D97DDE60EB30B772F79 /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAAD3C33E057EF456186C05C /* HTTPClient.swift */; };
-		68B203C88795D69798DF57D3 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FDB210123ADFA58E67737CA /* Views.swift */; };
 		6E15AD5DE7CC3147442D2BEC /* HTMLPayloadParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B429ACDC0C702D23FDC4C3A /* HTMLPayloadParserTests.swift */; };
 		712D241B929CDF81EAC2864F /* StreamingCommunityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */; };
 		7881E5A49D1E2248771A40D7 /* StreamingCommunityProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */; };
@@ -41,6 +40,21 @@
 		F5DE133365BE40AAF491897B /* AnimeLivePlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6682D4E953E4296113E4E3DA /* AnimeLivePlaybackTests.swift */; };
 		FEB9A4FE40E886D3E4CEA690 /* PlaybackProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D73B945A62B4078F3230F2B /* PlaybackProgressTests.swift */; };
 		D41A5B7E30630001007A449E /* SubtitlePipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41A5B7D30630001007A449E /* SubtitlePipelineTests.swift */; };
+		02D23EC5B5D0F80180E3221A /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52B0559383B79BF667FD06C /* DesignSystem.swift */; };
+		3CF42F84147EB2E86325678C /* SharedChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = A262280E988FBB53EBE8F93F /* SharedChrome.swift */; };
+		B133C7DCAE14EBEA8FD8CE41 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38D80A2D616653F4F91440CC /* RootView.swift */; };
+		57B48058EB7ECEE30B2FAF1E /* SplashScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD4CDF9A1C11DDF2BCD922A /* SplashScreen.swift */; };
+		668FD0B42A990DE4B90EFBB7 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0200A8F937AA90EDF45C589D /* HomeView.swift */; };
+		F142186C4AFE54E533822DB7 /* ContinueWatchingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBD6E049CE78A41E209B8A61 /* ContinueWatchingViews.swift */; };
+		B6D3DC157B0ADF3AD0245252 /* CatalogViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086EDD48D126744C4BF9485F /* CatalogViews.swift */; };
+		5A6C3755751491F617122476 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F422B8D65C231BA27EC03E9 /* SearchView.swift */; };
+		781FA0B8758B9F2B1E585AE1 /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE2FD8DDFFF46DAB0FECCFB2 /* DetailsView.swift */; };
+		FB78050B8882CDA321F6E500 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CC28E37008904E7CC1AB011 /* SettingsView.swift */; };
+		3AD551B75B5D279F626C5E24 /* PlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B1DCEAD2744F916A11C6FA /* PlayerScreen.swift */; };
+		5B71B51EDBC76137E2D6EF8D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0079D9B7A6121A832B4A46A /* LibraryView.swift */; };
+		AEEF15D4C149DFE7BE918FC7 /* SupportLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB76389140F4DEF383ED403 /* SupportLinks.swift */; };
+		EBA5E1F5BCFA37AACEF87A34 /* UpdateFeedClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3759D30B936807FCF6DE3220 /* UpdateFeedClient.swift */; };
+		8D299659B0D955AEA40EDA01 /* UpdateFeedClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6633ABEFEE82F8F53913D1 /* UpdateFeedClientTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,7 +85,6 @@
 		6682D4E953E4296113E4E3DA /* AnimeLivePlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimeLivePlaybackTests.swift; sourceTree = "<group>"; };
 		6D6137ADA4DFE0544DA41AC9 /* PlaybackDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiscovery.swift; sourceTree = "<group>"; };
 		6D8ACF44C2AA41DDFC82AF7F /* NativePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePlayer.swift; sourceTree = "<group>"; };
-		6FDB210123ADFA58E67737CA /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		7376D52AEC6961ADAD1B97DA /* StremioAddonProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonProvider.swift; sourceTree = "<group>"; };
 		74542771E6401702CEACC2AB /* TMDBCatalogMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TMDBCatalogMatcherTests.swift; sourceTree = "<group>"; };
 		7AB858013062E094007A449E /* SkipSegments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkipSegments.swift; sourceTree = "<group>"; };
@@ -92,6 +105,21 @@
 		F19C78EBB3FD08EBF512626A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingCommunityModels.swift; sourceTree = "<group>"; };
 		FAF8278AFFAD587BE55C0F74 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		E52B0559383B79BF667FD06C /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		A262280E988FBB53EBE8F93F /* SharedChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedChrome.swift; sourceTree = "<group>"; };
+		38D80A2D616653F4F91440CC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		7BD4CDF9A1C11DDF2BCD922A /* SplashScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashScreen.swift; sourceTree = "<group>"; };
+		0200A8F937AA90EDF45C589D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		EBD6E049CE78A41E209B8A61 /* ContinueWatchingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinueWatchingViews.swift; sourceTree = "<group>"; };
+		086EDD48D126744C4BF9485F /* CatalogViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogViews.swift; sourceTree = "<group>"; };
+		2F422B8D65C231BA27EC03E9 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		CE2FD8DDFFF46DAB0FECCFB2 /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
+		7CC28E37008904E7CC1AB011 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B4B1DCEAD2744F916A11C6FA /* PlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerScreen.swift; sourceTree = "<group>"; };
+		C0079D9B7A6121A832B4A46A /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		0BB76389140F4DEF383ED403 /* SupportLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportLinks.swift; sourceTree = "<group>"; };
+		3759D30B936807FCF6DE3220 /* UpdateFeedClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeedClient.swift; sourceTree = "<group>"; };
+		FD6633ABEFEE82F8F53913D1 /* UpdateFeedClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeedClientTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -108,6 +136,7 @@
 				2361987E924D39BB64E83C03 /* StremioAddonProviderTests.swift */,
 				74542771E6401702CEACC2AB /* TMDBCatalogMatcherTests.swift */,
 				19B5DAA1FAC2D295C8971D10 /* TMDBClientTests.swift */,
+				FD6633ABEFEE82F8F53913D1 /* UpdateFeedClientTests.swift */,
 			);
 			path = BetterStreamflixTests;
 			sourceTree = "<group>";
@@ -130,6 +159,8 @@
 				2835E04E7476E1DD1E9D6416 /* AppEnvironment.swift */,
 				07A72147F0EA305FD7782DE1 /* HTMLPayloadParser.swift */,
 				DAAD3C33E057EF456186C05C /* HTTPClient.swift */,
+				0BB76389140F4DEF383ED403 /* SupportLinks.swift */,
+				3759D30B936807FCF6DE3220 /* UpdateFeedClient.swift */,
 				A899E164D7F7A30FB6EA94F6 /* LibraryStore.swift */,
 				B9479F8A5079CB583A9DDC46 /* Models.swift */,
 				6D6137ADA4DFE0544DA41AC9 /* PlaybackDiscovery.swift */,
@@ -181,8 +212,19 @@
 			isa = PBXGroup;
 			children = (
 				6D8ACF44C2AA41DDFC82AF7F /* NativePlayer.swift */,
+				E52B0559383B79BF667FD06C /* DesignSystem.swift */,
+				A262280E988FBB53EBE8F93F /* SharedChrome.swift */,
+				38D80A2D616653F4F91440CC /* RootView.swift */,
+				7BD4CDF9A1C11DDF2BCD922A /* SplashScreen.swift */,
+				0200A8F937AA90EDF45C589D /* HomeView.swift */,
+				EBD6E049CE78A41E209B8A61 /* ContinueWatchingViews.swift */,
+				086EDD48D126744C4BF9485F /* CatalogViews.swift */,
+				2F422B8D65C231BA27EC03E9 /* SearchView.swift */,
+				CE2FD8DDFFF46DAB0FECCFB2 /* DetailsView.swift */,
+				7CC28E37008904E7CC1AB011 /* SettingsView.swift */,
+				B4B1DCEAD2744F916A11C6FA /* PlayerScreen.swift */,
+				C0079D9B7A6121A832B4A46A /* LibraryView.swift */,
 				CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */,
-				6FDB210123ADFA58E67737CA /* Views.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -286,6 +328,20 @@
 				8B00018A576B73A6DE7152C2 /* LibraryStore.swift in Sources */,
 				35094991060370728B4AD4D1 /* Models.swift in Sources */,
 				3C4EC4FDFA0D184D8C635CAC /* NativePlayer.swift in Sources */,
+				02D23EC5B5D0F80180E3221A /* DesignSystem.swift in Sources */,
+				3CF42F84147EB2E86325678C /* SharedChrome.swift in Sources */,
+				B133C7DCAE14EBEA8FD8CE41 /* RootView.swift in Sources */,
+				57B48058EB7ECEE30B2FAF1E /* SplashScreen.swift in Sources */,
+				668FD0B42A990DE4B90EFBB7 /* HomeView.swift in Sources */,
+				F142186C4AFE54E533822DB7 /* ContinueWatchingViews.swift in Sources */,
+				B6D3DC157B0ADF3AD0245252 /* CatalogViews.swift in Sources */,
+				5A6C3755751491F617122476 /* SearchView.swift in Sources */,
+				781FA0B8758B9F2B1E585AE1 /* DetailsView.swift in Sources */,
+				FB78050B8882CDA321F6E500 /* SettingsView.swift in Sources */,
+				3AD551B75B5D279F626C5E24 /* PlayerScreen.swift in Sources */,
+				5B71B51EDBC76137E2D6EF8D /* LibraryView.swift in Sources */,
+				AEEF15D4C149DFE7BE918FC7 /* SupportLinks.swift in Sources */,
+				EBA5E1F5BCFA37AACEF87A34 /* UpdateFeedClient.swift in Sources */,
 				BEC1589F6E3406A694C40439 /* PlaybackDiscovery.swift in Sources */,
 				F0BB6BEE9D45FBEBC1887CC6 /* Provider.swift in Sources */,
 				712D241B929CDF81EAC2864F /* StreamingCommunityModels.swift in Sources */,
@@ -297,7 +353,6 @@
 				194E84373A3313788D7814D8 /* UserDataBackup.swift in Sources */,
 				EE446B215C538FDD8B9AD6C8 /* BetterStreamflixApp.swift in Sources */,
 				B307A32095D1E818891B4561 /* ViewModels.swift in Sources */,
-				68B203C88795D69798DF57D3 /* Views.swift in Sources */,
 				5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -316,6 +371,7 @@
 				C01C3860FCBD106BB2A63C3D /* StremioAddonProviderTests.swift in Sources */,
 				25F410B617628369508247B1 /* TMDBCatalogMatcherTests.swift in Sources */,
 				49A22876D26A067C086188A4 /* TMDBClientTests.swift in Sources */,
+				8D299659B0D955AEA40EDA01 /* UpdateFeedClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -345,7 +401,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.9.0;
+				MARKETING_VERSION = 0.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -538,7 +594,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.9.0;
+				MARKETING_VERSION = 0.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
