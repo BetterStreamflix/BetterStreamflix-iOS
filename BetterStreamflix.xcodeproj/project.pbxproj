@@ -1,0 +1,583 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1472CE33F4F8C621E976745E /* PlayerSourceSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55506E805C529E255E1C5FDB /* PlayerSourceSwitchTests.swift */; };
+		15C3A55C51E7493694323D03 /* PlaybackSeekTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44EE7D6F5A1E4D9D829CFC8B /* PlaybackSeekTests.swift */; };
+		194E84373A3313788D7814D8 /* UserDataBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDE955356AA93FC1945591F /* UserDataBackup.swift */; };
+		1C890DC7CEF559EEB339C409 /* TMDBClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */; };
+		25F410B617628369508247B1 /* TMDBCatalogMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74542771E6401702CEACC2AB /* TMDBCatalogMatcherTests.swift */; };
+		35094991060370728B4AD4D1 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9479F8A5079CB583A9DDC46 /* Models.swift */; };
+		37850C3BF6EB0809B715691D /* StremioAddonProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7376D52AEC6961ADAD1B97DA /* StremioAddonProvider.swift */; };
+		3C4EC4FDFA0D184D8C635CAC /* NativePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8ACF44C2AA41DDFC82AF7F /* NativePlayer.swift */; };
+		49A22876D26A067C086188A4 /* TMDBClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B5DAA1FAC2D295C8971D10 /* TMDBClientTests.swift */; };
+		4A5B080F481FDC01A0663FA2 /* AnimeStreamResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */; };
+		5357C6AC995464E109DA454E /* PlaybackDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */; };
+		5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */; };
+		59CC5D97DDE60EB30B772F79 /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAAD3C33E057EF456186C05C /* HTTPClient.swift */; };
+		68B203C88795D69798DF57D3 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FDB210123ADFA58E67737CA /* Views.swift */; };
+		6E15AD5DE7CC3147442D2BEC /* HTMLPayloadParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B429ACDC0C702D23FDC4C3A /* HTMLPayloadParserTests.swift */; };
+		712D241B929CDF81EAC2864F /* StreamingCommunityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */; };
+		7881E5A49D1E2248771A40D7 /* StreamingCommunityProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */; };
+		7AB858023062E096007A449E /* SkipSegments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB858013062E094007A449E /* SkipSegments.swift */; };
+		82A8494D1FD3F2A206A501A2 /* HTMLPayloadParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07A72147F0EA305FD7782DE1 /* HTMLPayloadParser.swift */; };
+		8B00018A576B73A6DE7152C2 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A899E164D7F7A30FB6EA94F6 /* LibraryStore.swift */; };
+		9594B23F951969F0400B19BF /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2835E04E7476E1DD1E9D6416 /* AppEnvironment.swift */; };
+		AA3A37AC1B4F6EA5624A995C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FAF8278AFFAD587BE55C0F74 /* PrivacyInfo.xcprivacy */; };
+		B307A32095D1E818891B4561 /* ViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */; };
+		BEC1589F6E3406A694C40439 /* PlaybackDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6137ADA4DFE0544DA41AC9 /* PlaybackDiscovery.swift */; };
+		C01C3860FCBD106BB2A63C3D /* StremioAddonProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2361987E924D39BB64E83C03 /* StremioAddonProviderTests.swift */; };
+		C319696D4F332DC5805B629A /* SubtitleProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = A77A50CD75D840C27F9848DD /* SubtitleProviders.swift */; };
+		D41A5B7C30630001007A449E /* SubtitleCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41A5B7B30630001007A449E /* SubtitleCache.swift */; };
+		E41BA08FACF5DDC4B04EFC95 /* AnimePlaybackProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3CC4AEE056C846C5C23DA7B /* AnimePlaybackProvider.swift */; };
+		EE446B215C538FDD8B9AD6C8 /* BetterStreamflixApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD82797C65EFBC63F3D18491 /* BetterStreamflixApp.swift */; };
+		EF22D988389224DBB8937340 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 06C3337ACED2B2DC57D7FF2B /* Assets.xcassets */; };
+		F0BB6BEE9D45FBEBC1887CC6 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4266A879F83FCBDD41F8A33F /* Provider.swift */; };
+		F5DE133365BE40AAF491897B /* AnimeLivePlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6682D4E953E4296113E4E3DA /* AnimeLivePlaybackTests.swift */; };
+		FEB9A4FE40E886D3E4CEA690 /* PlaybackProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D73B945A62B4078F3230F2B /* PlaybackProgressTests.swift */; };
+		D41A5B7E30630001007A449E /* SubtitlePipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41A5B7D30630001007A449E /* SubtitlePipelineTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3A1F5677571FEAEEC349EA44 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7FD476A6B78E6892F5E407ED /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 887543FE98EDDB51C0D26FB2;
+			remoteInfo = BetterStreamflix;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		06C3337ACED2B2DC57D7FF2B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		07A72147F0EA305FD7782DE1 /* HTMLPayloadParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLPayloadParser.swift; sourceTree = "<group>"; };
+		112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiscoveryTests.swift; sourceTree = "<group>"; };
+		19B5DAA1FAC2D295C8971D10 /* TMDBClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TMDBClientTests.swift; sourceTree = "<group>"; };
+		1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TMDBClient.swift; sourceTree = "<group>"; };
+		1BDE955356AA93FC1945591F /* UserDataBackup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDataBackup.swift; sourceTree = "<group>"; };
+		2361987E924D39BB64E83C03 /* StremioAddonProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonProviderTests.swift; sourceTree = "<group>"; };
+		2835E04E7476E1DD1E9D6416 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		3B429ACDC0C702D23FDC4C3A /* HTMLPayloadParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLPayloadParserTests.swift; sourceTree = "<group>"; };
+		4266A879F83FCBDD41F8A33F /* Provider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provider.swift; sourceTree = "<group>"; };
+		44EE7D6F5A1E4D9D829CFC8B /* PlaybackSeekTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSeekTests.swift; sourceTree = "<group>"; };
+		4D73B945A62B4078F3230F2B /* PlaybackProgressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackProgressTests.swift; sourceTree = "<group>"; };
+		55506E805C529E255E1C5FDB /* PlayerSourceSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSourceSwitchTests.swift; sourceTree = "<group>"; };
+		5B915DCCC596F2477C60BED0 /* BetterStreamflix.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BetterStreamflix.entitlements; sourceTree = "<group>"; };
+		6682D4E953E4296113E4E3DA /* AnimeLivePlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimeLivePlaybackTests.swift; sourceTree = "<group>"; };
+		6D6137ADA4DFE0544DA41AC9 /* PlaybackDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiscovery.swift; sourceTree = "<group>"; };
+		6D8ACF44C2AA41DDFC82AF7F /* NativePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePlayer.swift; sourceTree = "<group>"; };
+		6FDB210123ADFA58E67737CA /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		7376D52AEC6961ADAD1B97DA /* StremioAddonProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonProvider.swift; sourceTree = "<group>"; };
+		74542771E6401702CEACC2AB /* TMDBCatalogMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TMDBCatalogMatcherTests.swift; sourceTree = "<group>"; };
+		7AB858013062E094007A449E /* SkipSegments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkipSegments.swift; sourceTree = "<group>"; };
+		80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimeStreamResolver.swift; sourceTree = "<group>"; };
+		8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingCommunityProvider.swift; sourceTree = "<group>"; };
+		92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VixcloudResolver.swift; sourceTree = "<group>"; };
+		A77A50CD75D840C27F9848DD /* SubtitleProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleProviders.swift; sourceTree = "<group>"; };
+		D41A5B7B30630001007A449E /* SubtitleCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleCache.swift; sourceTree = "<group>"; };
+		A899E164D7F7A30FB6EA94F6 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		B9479F8A5079CB583A9DDC46 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		C1078DFACB04854902CB04AA /* BetterStreamflixTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BetterStreamflixTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3CC4AEE056C846C5C23DA7B /* AnimePlaybackProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimePlaybackProvider.swift; sourceTree = "<group>"; };
+		CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModels.swift; sourceTree = "<group>"; };
+		DAAD3C33E057EF456186C05C /* HTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPClient.swift; sourceTree = "<group>"; };
+		DB48061975AD87F58267ABB3 /* BetterStreamflix.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BetterStreamflix.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D41A5B7D30630001007A449E /* SubtitlePipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitlePipelineTests.swift; sourceTree = "<group>"; };
+		DD82797C65EFBC63F3D18491 /* BetterStreamflixApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BetterStreamflixApp.swift; sourceTree = "<group>"; };
+		F19C78EBB3FD08EBF512626A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingCommunityModels.swift; sourceTree = "<group>"; };
+		FAF8278AFFAD587BE55C0F74 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		30B43768D32E64A9A5EDCA3D /* BetterStreamflixTests */ = {
+			isa = PBXGroup;
+			children = (
+				6682D4E953E4296113E4E3DA /* AnimeLivePlaybackTests.swift */,
+				3B429ACDC0C702D23FDC4C3A /* HTMLPayloadParserTests.swift */,
+				112B4BF98D8F1598D647E6B0 /* PlaybackDiscoveryTests.swift */,
+				4D73B945A62B4078F3230F2B /* PlaybackProgressTests.swift */,
+				D41A5B7D30630001007A449E /* SubtitlePipelineTests.swift */,
+				44EE7D6F5A1E4D9D829CFC8B /* PlaybackSeekTests.swift */,
+				55506E805C529E255E1C5FDB /* PlayerSourceSwitchTests.swift */,
+				2361987E924D39BB64E83C03 /* StremioAddonProviderTests.swift */,
+				74542771E6401702CEACC2AB /* TMDBCatalogMatcherTests.swift */,
+				19B5DAA1FAC2D295C8971D10 /* TMDBClientTests.swift */,
+			);
+			path = BetterStreamflixTests;
+			sourceTree = "<group>";
+		};
+		483BF04F79F6240146C6B63F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DB48061975AD87F58267ABB3 /* BetterStreamflix.app */,
+				C1078DFACB04854902CB04AA /* BetterStreamflixTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4D294A30460170810C8D746B /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				7AB858013062E094007A449E /* SkipSegments.swift */,
+				C3CC4AEE056C846C5C23DA7B /* AnimePlaybackProvider.swift */,
+				80F37C5CF39A492282E2A9EE /* AnimeStreamResolver.swift */,
+				2835E04E7476E1DD1E9D6416 /* AppEnvironment.swift */,
+				07A72147F0EA305FD7782DE1 /* HTMLPayloadParser.swift */,
+				DAAD3C33E057EF456186C05C /* HTTPClient.swift */,
+				A899E164D7F7A30FB6EA94F6 /* LibraryStore.swift */,
+				B9479F8A5079CB583A9DDC46 /* Models.swift */,
+				6D6137ADA4DFE0544DA41AC9 /* PlaybackDiscovery.swift */,
+				4266A879F83FCBDD41F8A33F /* Provider.swift */,
+				F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */,
+				8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */,
+				7376D52AEC6961ADAD1B97DA /* StremioAddonProvider.swift */,
+				A77A50CD75D840C27F9848DD /* SubtitleProviders.swift */,
+				D41A5B7B30630001007A449E /* SubtitleCache.swift */,
+				1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */,
+				1BDE955356AA93FC1945591F /* UserDataBackup.swift */,
+				92096146915EE20E85F1D8E7 /* VixcloudResolver.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		76FBB74658D664F4F3F40A89 /* BetterStreamflix */ = {
+			isa = PBXGroup;
+			children = (
+				DD82797C65EFBC63F3D18491 /* BetterStreamflixApp.swift */,
+				4D294A30460170810C8D746B /* Core */,
+				DFED9320DF3E1E4A3715E40C /* Features */,
+				DE70DEAC71713F95D9C3A38A /* Resources */,
+			);
+			path = BetterStreamflix;
+			sourceTree = "<group>";
+		};
+		8D8AC28433B2AC935501E5A2 = {
+			isa = PBXGroup;
+			children = (
+				76FBB74658D664F4F3F40A89 /* BetterStreamflix */,
+				30B43768D32E64A9A5EDCA3D /* BetterStreamflixTests */,
+				483BF04F79F6240146C6B63F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DE70DEAC71713F95D9C3A38A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				06C3337ACED2B2DC57D7FF2B /* Assets.xcassets */,
+				F19C78EBB3FD08EBF512626A /* Info.plist */,
+				FAF8278AFFAD587BE55C0F74 /* PrivacyInfo.xcprivacy */,
+				5B915DCCC596F2477C60BED0 /* BetterStreamflix.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		DFED9320DF3E1E4A3715E40C /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				6D8ACF44C2AA41DDFC82AF7F /* NativePlayer.swift */,
+				CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */,
+				6FDB210123ADFA58E67737CA /* Views.swift */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		887543FE98EDDB51C0D26FB2 /* BetterStreamflix */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6E36DFB38ED9B78C5432D865 /* Build configuration list for PBXNativeTarget "BetterStreamflix" */;
+			buildPhases = (
+				41EE8B5767B0C17BE620D5EB /* Sources */,
+				D2CBC3C0A47F2DDAC075D2B2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BetterStreamflix;
+			packageProductDependencies = (
+			);
+			productName = BetterStreamflix;
+			productReference = DB48061975AD87F58267ABB3 /* BetterStreamflix.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BCCFD8D037ED6DA65F70506A /* BetterStreamflixTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EBE048412C188E0C02EB3FBB /* Build configuration list for PBXNativeTarget "BetterStreamflixTests" */;
+			buildPhases = (
+				ED0A716E8CBDA2A819B54C5D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0A16816192FC832CFD7D6BBB /* PBXTargetDependency */,
+			);
+			name = BetterStreamflixTests;
+			packageProductDependencies = (
+			);
+			productName = BetterStreamflixTests;
+			productReference = C1078DFACB04854902CB04AA /* BetterStreamflixTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7FD476A6B78E6892F5E407ED /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					BCCFD8D037ED6DA65F70506A = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 070106BC6C9C9A3557F945E6 /* Build configuration list for PBXProject "BetterStreamflix" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8D8AC28433B2AC935501E5A2;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 483BF04F79F6240146C6B63F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				887543FE98EDDB51C0D26FB2 /* BetterStreamflix */,
+				BCCFD8D037ED6DA65F70506A /* BetterStreamflixTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D2CBC3C0A47F2DDAC075D2B2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EF22D988389224DBB8937340 /* Assets.xcassets in Resources */,
+				AA3A37AC1B4F6EA5624A995C /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		41EE8B5767B0C17BE620D5EB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E41BA08FACF5DDC4B04EFC95 /* AnimePlaybackProvider.swift in Sources */,
+				7AB858023062E096007A449E /* SkipSegments.swift in Sources */,
+				4A5B080F481FDC01A0663FA2 /* AnimeStreamResolver.swift in Sources */,
+				9594B23F951969F0400B19BF /* AppEnvironment.swift in Sources */,
+				82A8494D1FD3F2A206A501A2 /* HTMLPayloadParser.swift in Sources */,
+				59CC5D97DDE60EB30B772F79 /* HTTPClient.swift in Sources */,
+				8B00018A576B73A6DE7152C2 /* LibraryStore.swift in Sources */,
+				35094991060370728B4AD4D1 /* Models.swift in Sources */,
+				3C4EC4FDFA0D184D8C635CAC /* NativePlayer.swift in Sources */,
+				BEC1589F6E3406A694C40439 /* PlaybackDiscovery.swift in Sources */,
+				F0BB6BEE9D45FBEBC1887CC6 /* Provider.swift in Sources */,
+				712D241B929CDF81EAC2864F /* StreamingCommunityModels.swift in Sources */,
+				7881E5A49D1E2248771A40D7 /* StreamingCommunityProvider.swift in Sources */,
+				37850C3BF6EB0809B715691D /* StremioAddonProvider.swift in Sources */,
+				C319696D4F332DC5805B629A /* SubtitleProviders.swift in Sources */,
+				D41A5B7C30630001007A449E /* SubtitleCache.swift in Sources */,
+				1C890DC7CEF559EEB339C409 /* TMDBClient.swift in Sources */,
+				194E84373A3313788D7814D8 /* UserDataBackup.swift in Sources */,
+				EE446B215C538FDD8B9AD6C8 /* BetterStreamflixApp.swift in Sources */,
+				B307A32095D1E818891B4561 /* ViewModels.swift in Sources */,
+				68B203C88795D69798DF57D3 /* Views.swift in Sources */,
+				5989D41A9C27B0CA6CAC17D4 /* VixcloudResolver.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ED0A716E8CBDA2A819B54C5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F5DE133365BE40AAF491897B /* AnimeLivePlaybackTests.swift in Sources */,
+				6E15AD5DE7CC3147442D2BEC /* HTMLPayloadParserTests.swift in Sources */,
+				5357C6AC995464E109DA454E /* PlaybackDiscoveryTests.swift in Sources */,
+				FEB9A4FE40E886D3E4CEA690 /* PlaybackProgressTests.swift in Sources */,
+				D41A5B7E30630001007A449E /* SubtitlePipelineTests.swift in Sources */,
+				15C3A55C51E7493694323D03 /* PlaybackSeekTests.swift in Sources */,
+				1472CE33F4F8C621E976745E /* PlayerSourceSwitchTests.swift in Sources */,
+				C01C3860FCBD106BB2A63C3D /* StremioAddonProviderTests.swift in Sources */,
+				25F410B617628369508247B1 /* TMDBCatalogMatcherTests.swift in Sources */,
+				49A22876D26A067C086188A4 /* TMDBClientTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0A16816192FC832CFD7D6BBB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 887543FE98EDDB51C0D26FB2 /* BetterStreamflix */;
+			targetProxy = 3A1F5677571FEAEEC349EA44 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1CEE218FF8A747D74AC0ED38 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BetterStreamflix/Resources/BetterStreamflix.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A97K2SS8D9;
+				INFOPLIST_FILE = BetterStreamflix/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.9.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		33385A60476E304021E1BEE4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BetterStreamflix.app/BetterStreamflix";
+			};
+			name = Debug;
+		};
+		476CFC287C549CE5B64C8F41 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AppIntents,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+		C06002D0C3EF0D1741FEDF3F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BetterStreamflix.app/BetterStreamflix";
+			};
+			name = Release;
+		};
+		D79908D40D80D98CCA71B49C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AppIntents,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		D7AB7837F21C8FEF021F50B9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BetterStreamflix/Resources/BetterStreamflix.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A97K2SS8D9;
+				INFOPLIST_FILE = BetterStreamflix/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.9.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		070106BC6C9C9A3557F945E6 /* Build configuration list for PBXProject "BetterStreamflix" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				476CFC287C549CE5B64C8F41 /* Debug */,
+				D79908D40D80D98CCA71B49C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6E36DFB38ED9B78C5432D865 /* Build configuration list for PBXNativeTarget "BetterStreamflix" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D7AB7837F21C8FEF021F50B9 /* Debug */,
+				1CEE218FF8A747D74AC0ED38 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EBE048412C188E0C02EB3FBB /* Build configuration list for PBXNativeTarget "BetterStreamflixTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				33385A60476E304021E1BEE4 /* Debug */,
+				C06002D0C3EF0D1741FEDF3F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 7FD476A6B78E6892F5E407ED /* Project object */;
+}
