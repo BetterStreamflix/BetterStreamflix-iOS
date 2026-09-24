@@ -3961,12 +3961,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
                 return
             }
 
-            var configuration: UIButton.Configuration
-            if #available(iOS 26.0, *) {
-                configuration = .glass()
-            } else {
-                configuration = .gray()
-            }
+            var configuration = UIButton.Configuration.gray()
             configuration.cornerStyle = .capsule
             configuration.image = UIImage(systemName: "slider.horizontal.3")
             configuration.baseForegroundColor = .white
