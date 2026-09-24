@@ -99,7 +99,11 @@ struct AppPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .font(.headline.weight(.semibold))
             .foregroundStyle(Color(hex: 0x11141C))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .background {
                 LinearGradient(
                     colors: [Color(hex: 0xF7F9FF), Color(hex: 0xCBD3E1)],
@@ -115,6 +119,7 @@ struct AppPrimaryButtonStyle: ButtonStyle {
             .shadow(color: glow.opacity(configuration.isPressed ? 0.2 : 0.5), radius: 12, y: 4)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .opacity(isEnabled ? 1 : 0.46)
+            .contentShape(Capsule())
             .animation(.easeOut(duration: 0.16), value: configuration.isPressed)
     }
 }

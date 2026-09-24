@@ -189,7 +189,7 @@ struct MoreView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.5"
+        ) as? String ?? "0.0.6"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"
@@ -211,12 +211,12 @@ struct MoreView: View {
             currentBuild: currentBuild
         )
         switch outcome {
-        case .newerRelease(let release):
-            updateCheckResult = .updateAvailable(release)
+        case .newerRelease(let info):
+            updateCheckResult = .updateAvailable(info)
         case .upToDate(let version, let build):
             updateCheckResult = .upToDate(version: version, build: build)
-        case .openReleases(let version, let build):
-            updateCheckResult = .openReleases(version: version, build: build)
+        case .unavailable(let version, let build):
+            updateCheckResult = .unavailable(version: version, build: build)
         }
     }
 }

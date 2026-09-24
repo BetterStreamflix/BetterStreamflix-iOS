@@ -128,7 +128,7 @@ jobs:
             --notes-file "$NOTES_FILE" \
             --latest
 
-      - name: Publish public update feed
+      - name: Publish update feeds
         env:
           GH_TOKEN: ${{ secrets.UPDATES_WRITE_TOKEN }}
           VERSION: ${{ steps.meta.outputs.version }}
@@ -141,9 +141,6 @@ jobs:
             echo "UPDATES_WRITE_TOKEN secret is required to publish ios/latest.json" >&2
             exit 1
           fi
-          WORK="$(mktemp -d)"
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/BetterStreamflix/BetterStreamflix-updates.git" "$WORK"
-          mkdir -p "$WORK/ios"
           RELEASED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           if [[ -n "${NOTES_INPUT}" ]]; then
             NOTES="$NOTES_INPUT"
@@ -152,29 +149,41 @@ jobs:
           else
             NOTES="BetterStreamflix ${VERSION} build ${BUILD}."
           fi
-          export WORK VERSION BUILD TAG RELEASED_AT NOTES
-          python3 - <<'PY'
+          export VERSION BUILD TAG RELEASED_AT NOTES
+          PAYLOAD="$(python3 - <<'PY'
           import json, os
-          payload = {
+          print(json.dumps({
             "version": os.environ["VERSION"],
             "build": os.environ["BUILD"],
             "releasedAt": os.environ["RELEASED_AT"],
             "notes": os.environ["NOTES"],
             "releasePageUrl": f"https://github.com/BetterStreamflix/BetterStreamflix-iOS/releases/tag/{os.environ['TAG']}",
             "ipaAssetName": f"BetterStreamflix-{os.environ['VERSION']}-unsigned.ipa",
-          }
-          path = os.path.join(os.environ["WORK"], "ios", "latest.json")
-          with open(path, "w", encoding="utf-8") as handle:
-              json.dump(payload, handle, indent=2)
-              handle.write("\n")
-          print("Wrote", path)
+          }, indent=2) + "\n")
           PY
-          git -C "$WORK" config user.name "BetterStreamflix"
-          git -C "$WORK" config user.email "333210020+BetterStreamflix@users.noreply.github.com"
-          git -C "$WORK" add ios/latest.json
-          if git -C "$WORK" diff --cached --quiet; then
-            echo "Update feed already current"
-          else
-            git -C "$WORK" commit -m "iOS ${VERSION} (${BUILD})"
-            git -C "$WORK" push origin HEAD:main
-          fi
+          )"
+
+          publish_feed() {
+            local repo="$1"
+            local label="$2"
+            local WORK
+            WORK="$(mktemp -d)"
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/BetterStreamflix/${repo}.git" "$WORK"
+            mkdir -p "$WORK/ios"
+            printf '%s' "$PAYLOAD" > "$WORK/ios/latest.json"
+            git -C "$WORK" config user.name "BetterStreamflix"
+            git -C "$WORK" config user.email "333210020+BetterStreamflix@users.noreply.github.com"
+            git -C "$WORK" add ios/latest.json
+            if git -C "$WORK" diff --cached --quiet; then
+              echo "${label} feed already current"
+            else
+              git -C "$WORK" commit -m "iOS ${VERSION} (${BUILD})"
+              git -C "$WORK" push origin HEAD:main
+              echo "Published ${label} feed"
+            fi
+          }
+
+          # Private bookkeeping copy.
+          publish_feed "BetterStreamflix-updates" "private"
+          # Public raw feed the app fetches without a token.
+          publish_feed "BetterStreamflix-update-feed" "public"

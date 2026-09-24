@@ -126,33 +126,6 @@ struct GitHubReleaseClient: Sendable {
     }
 }
 
-private struct Version: Comparable {
-    private let components: [Int]
-
-    init?(_ rawValue: String) {
-        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.first == "v" || value.first == "V" {
-            value.removeFirst()
-        }
-        value = String(value.split(whereSeparator: { $0 == "-" || $0 == "+" }).first ?? "")
-
-        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
-        let parsed = parts.compactMap { Int($0) }
-        guard !parsed.isEmpty, parsed.count == parts.count else { return nil }
-        components = parsed
-    }
-
-    static func < (lhs: Version, rhs: Version) -> Bool {
-        let count = max(lhs.components.count, rhs.components.count)
-        for index in 0..<count {
-            let left = index < lhs.components.count ? lhs.components[index] : 0
-            let right = index < rhs.components.count ? rhs.components[index] : 0
-            if left != right { return left < right }
-        }
-        return false
-    }
-}
-
 enum ReleaseNotesMarkdownBlock: Equatable {
     case heading(level: Int, text: String)
     case paragraph(String)

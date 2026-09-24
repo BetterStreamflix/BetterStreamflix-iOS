@@ -502,12 +502,12 @@ struct SettingsView: View {
             currentBuild: currentBuild
         )
         switch outcome {
-        case .newerRelease(let release):
-            updateCheckResult = .updateAvailable(release)
+        case .newerRelease(let info):
+            updateCheckResult = .updateAvailable(info)
         case .upToDate(let version, let build):
             updateCheckResult = .upToDate(version: version, build: build)
-        case .openReleases(let version, let build):
-            updateCheckResult = .openReleases(version: version, build: build)
+        case .unavailable(let version, let build):
+            updateCheckResult = .unavailable(version: version, build: build)
         }
     }
 }
@@ -545,15 +545,15 @@ struct UserDataBackupNotice: Identifiable {
 }
 
 enum UpdateCheckResult: Identifiable {
-    case updateAvailable(GitHubRelease)
+    case updateAvailable(AppUpdateInfo)
     case upToDate(version: String, build: String)
-    case openReleases(version: String, build: String)
+    case unavailable(version: String, build: String)
 
     var id: String {
         switch self {
-        case .updateAvailable(let release): "available-\(release.tagName)"
+        case .updateAvailable(let info): "available-\(info.version)-\(info.build)"
         case .upToDate(let version, let build): "current-\(version)-\(build)"
-        case .openReleases(let version, let build): "releases-\(version)-\(build)"
+        case .unavailable(let version, let build): "unavailable-\(version)-\(build)"
         }
     }
 }
@@ -582,32 +582,30 @@ struct UpdateCheckSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     switch result {
-                    case .updateAvailable(let release):
-                        updateAvailableContent(release)
+                    case .updateAvailable(let info):
+                        updateAvailableContent(info)
                     case .upToDate(let version, let build):
                         statusContent(
                             icon: "checkmark.circle.fill",
                             title: "You're up to date",
-                            message: "BetterStreamflix \(version) (\(build)) matches the newest release we could confirm."
+                            message: "BetterStreamflix \(version) (\(build)) matches the newest public feed build."
                         )
-                        releasesCTA(title: "Browse Releases")
-                    case .openReleases(let version, let build):
+                        primaryCTA(
+                            title: "Browse release history",
+                            systemImage: "safari",
+                            url: SupportLinks.githubReleases
+                        )
+                    case .unavailable(let version, let build):
                         statusContent(
-                            icon: "arrow.down.app.fill",
-                            title: "Updates on GitHub Releases",
-                            message: "You're running BetterStreamflix \(version) (\(build)). New unsigned IPAs are published on the repository Releases page — open it to download the latest build."
+                            icon: "wifi.exclamationmark",
+                            title: "Couldn't reach the update feed",
+                            message: "You're running BetterStreamflix \(version) (\(build)). Check your connection and try again, or open the Releases page in a browser."
                         )
-                        releasesCTA(title: "View Releases")
-                        Button {
-                            openURL(SupportLinks.githubLatestRelease)
-                        } label: {
-                            Label("Open latest release", systemImage: "link")
-                                .font(.headline.weight(.semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                        }
-                        .buttonStyle(.plain)
-                        .glassEffectWithFallback(in: Capsule())
+                        primaryCTA(
+                            title: "Open Releases",
+                            systemImage: "safari",
+                            url: SupportLinks.githubReleases
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -633,7 +631,7 @@ struct UpdateCheckSheet: View {
     }
 
     @ViewBuilder
-    private func updateAvailableContent(_ release: GitHubRelease) -> some View {
+    private func updateAvailableContent(_ info: AppUpdateInfo) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 Image(systemName: "arrow.down.circle.fill")
@@ -643,7 +641,7 @@ struct UpdateCheckSheet: View {
                     Text("Update available")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(AppTheme.primaryText)
-                    Text(release.name.flatMap { $0.isEmpty ? nil : $0 } ?? release.tagName)
+                    Text("BetterStreamflix \(info.version) (\(info.build))")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(accentColor)
                 }
@@ -656,26 +654,27 @@ struct UpdateCheckSheet: View {
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
 
-        ReleaseNotesMarkdownView(source: release.body, accentColor: accentColor)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .glassEffectWithFallback(
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .textSelection(.enabled)
-
-        Button {
-            openURL(release.htmlURL)
-        } label: {
-            Label("Open release page", systemImage: "safari")
-                .frame(maxWidth: .infinity)
+        if !info.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ReleaseNotesMarkdownView(source: info.notes, accentColor: accentColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .glassEffectWithFallback(
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .textSelection(.enabled)
         }
-        .buttonStyle(AppPrimaryButtonStyle(glow: accentColor))
+
+        primaryCTA(
+            title: "Download \(info.ipaAssetName)",
+            systemImage: "arrow.down.app.fill",
+            url: info.releasePageUrl
+        )
 
         if let onRemindLater {
             Button("Remind me later", action: onRemindLater)
+                .font(.headline.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .frame(minHeight: 48)
                 .glassEffectWithFallback(in: Capsule())
         }
         if let onSkipUpdate {
@@ -686,14 +685,16 @@ struct UpdateCheckSheet: View {
         }
     }
 
-    private func releasesCTA(title: String) -> some View {
+    private func primaryCTA(title: String, systemImage: String, url: URL) -> some View {
         Button {
-            openURL(SupportLinks.githubReleases)
+            openURL(url)
         } label: {
-            Label(title, systemImage: "safari")
+            Label(title, systemImage: systemImage)
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
         }
         .buttonStyle(AppPrimaryButtonStyle(glow: accentColor))
+        .accessibilityHint("Opens in Safari")
     }
 
     private func statusContent(icon: String, title: String, message: String) -> some View {

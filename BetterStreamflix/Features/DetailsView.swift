@@ -120,7 +120,7 @@ struct DetailsView: View {
             }
             .accessibilityLabel("Back")
             .padding(.leading, 16)
-            .padding(.top, ScreenMetrics.topSafeAreaInset + 6)
+            .padding(.top, max(ScreenMetrics.topSafeAreaInset - 2, 8))
         }
         .overlay { if model.isLoading && model.item.overview == nil { ProgressView() } }
         .overlay {

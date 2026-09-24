@@ -22,8 +22,8 @@ struct RootView: View {
     @State private var selectedTab: Tab = .home
     @State private var isSearchPresented = false
     @State private var isHomeReady = false
-    @State private var pendingAutomaticUpdate: GitHubRelease?
-    @State private var automaticUpdateRelease: GitHubRelease?
+    @State private var pendingAutomaticUpdate: AppUpdateInfo?
+    @State private var automaticUpdateRelease: AppUpdateInfo?
     @AppStorage("updates.skippedReleaseTag") private var skippedUpdateTag = ""
 
     var body: some View {
@@ -117,11 +117,11 @@ struct RootView: View {
             pendingAutomaticUpdate = nil
             automaticUpdateRelease = release
         }
-        .sheet(item: $automaticUpdateRelease) { release in
+        .sheet(item: $automaticUpdateRelease) { info in
             UpdateCheckSheet(
-                result: .updateAvailable(release),
+                result: .updateAvailable(info),
                 onSkipUpdate: {
-                    skippedUpdateTag = release.tagName
+                    skippedUpdateTag = info.tagName
                     automaticUpdateRelease = nil
                 },
                 onRemindLater: {
@@ -142,24 +142,28 @@ struct RootView: View {
     }
 
     private func checkForUpdatesAtLaunch() async {
+        let currentVersion = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "0"
+        let currentBuild = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "0"
         do {
-            let release = try await GitHubReleaseClient().latestRelease()
-            let currentVersion = Bundle.main.object(
-                forInfoDictionaryKey: "CFBundleShortVersionString"
-            ) as? String ?? "0"
+            let info = try await PublicUpdateFeedClient().latest()
             guard UpdateCheckService.shouldOfferUpdate(
-                tagName: release.tagName,
+                info: info,
                 currentVersion: currentVersion,
+                currentBuild: currentBuild,
                 skippedTagName: skippedUpdateTag
             ) else { return }
 
             if isHomeReady {
-                automaticUpdateRelease = release
+                automaticUpdateRelease = info
             } else {
-                pendingAutomaticUpdate = release
+                pendingAutomaticUpdate = info
             }
         } catch {
-            // Launch continues normally when Releases cannot be queried.
+            // Launch continues normally when the public feed cannot be queried.
         }
     }
 }

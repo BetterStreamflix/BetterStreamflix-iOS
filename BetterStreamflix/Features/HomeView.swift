@@ -318,26 +318,38 @@ struct TrendingHeroCarousel: View {
                             Text("View Details")
                         }
                     }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.white)
                 .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
                 .clipShape(Capsule())
+                .contentShape(Capsule())
                 .allowsHitTesting(!isCurrentTitleResolving)
 
-                WatchlistToggleButton(
-                    isInWatchlist: isCurrentTitleInWatchlist,
-                    action: { onToggleWatchlist(currentTitle) },
-                    size: 44,
-                    expandsHorizontally: true
-                )
+                Button {
+                    onToggleWatchlist(currentTitle)
+                } label: {
+                    Image(systemName: isCurrentTitleInWatchlist ? "checkmark" : "plus")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
+                .frame(height: 48)
+                .glassEffectWithFallback(in: Capsule())
+                .contentShape(Capsule())
+                .accessibilityLabel(
+                    isCurrentTitleInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"
+                )
                 .allowsHitTesting(!isCurrentTitleResolving)
             }
+            .frame(height: 48)
             .padding(.horizontal, 16)
 
         }

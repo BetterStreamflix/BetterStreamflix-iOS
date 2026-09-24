@@ -20,7 +20,7 @@ No third-party Swift packages are required.
 
 ## Version
 
-Current marketing version: **0.0.5**. CI advances the build number on each release.
+Current marketing version: **0.0.6**. CI advances the build number on each release.
 
 ## Unsigned IPA (GitHub Actions + Releases)
 
@@ -29,7 +29,7 @@ Every push to `main` runs **Unsigned IPA** (`.github/workflows/unsigned-ipa.yml`
 1. Builds an unsigned IPA via `./build-unsigned-ipa.sh`
 2. Uploads the Actions artifact
 3. Publishes a GitHub Release `v{version}` with the IPA attached
-4. Writes bookkeeping `ios/latest.json` to the private [BetterStreamflix-updates](https://github.com/BetterStreamflix/BetterStreamflix-updates) repo (CI token only — not used by the app)
+4. Writes `ios/latest.json` to the private [BetterStreamflix-updates](https://github.com/BetterStreamflix/BetterStreamflix-updates) bookkeeping repo **and** the public [BetterStreamflix-update-feed](https://github.com/BetterStreamflix/BetterStreamflix-update-feed) the app reads (no PAT in the app)
 
 ### Download
 
@@ -38,9 +38,11 @@ Every push to `main` runs **Unsigned IPA** (`.github/workflows/unsigned-ipa.yml`
 
 ### In-app Check for Updates
 
-Settings → About → **Check for updates** shows the installed version and opens **GitHub Releases** so you can download the newest unsigned IPA. No personal access token is embedded in the app.
+**More → Check for updates** (or Settings → About) fetches the public feed at  
+`https://raw.githubusercontent.com/BetterStreamflix/BetterStreamflix-update-feed/main/ios/latest.json`,  
+compares version/build, and offers Download / up-to-date / retry states. No personal access token is embedded in the app.
 
-Locally: `./build-unsigned-ipa.sh 0.0.5`.
+Locally: `./build-unsigned-ipa.sh 0.0.6`.
 
 ## Features
 

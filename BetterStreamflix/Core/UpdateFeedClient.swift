@@ -1,7 +1,6 @@
 import Foundation
 
-/// Bookkeeping model matching `ios/latest.json` written by CI into the private
-/// BetterStreamflix-updates repository. The app does not fetch that private file.
+/// Bookkeeping / public feed model matching `ios/latest.json` published by CI.
 struct AppUpdateInfo: Identifiable, Equatable, Sendable, Codable {
     var id: String { "\(version)-\(build)" }
     let version: String
@@ -14,20 +13,53 @@ struct AppUpdateInfo: Identifiable, Equatable, Sendable, Codable {
     var tagName: String {
         version.hasPrefix("v") ? version : "v\(version)"
     }
+
+    /// Public raw feed the app reads without a token.
+    static let publicFeedURL = URL(
+        string: "https://raw.githubusercontent.com/BetterStreamflix/BetterStreamflix-update-feed/main/ios/latest.json"
+    )!
 }
 
 enum AppUpdateOutcome: Equatable, Sendable {
-    case newerRelease(GitHubRelease)
+    case newerRelease(AppUpdateInfo)
     case upToDate(version: String, build: String)
-    /// Private-repo / offline path: show installed version and open Releases.
-    case openReleases(version: String, build: String)
+    /// Feed unreachable — still offer a working path to the last-known Releases page.
+    case unavailable(version: String, build: String)
+}
+
+struct PublicUpdateFeedClient: Sendable {
+    private let client: any HTTPClientProtocol
+    private let feedURL: URL
+
+    init(
+        client: any HTTPClientProtocol = HTTPClient(),
+        feedURL: URL = AppUpdateInfo.publicFeedURL
+    ) {
+        self.client = client
+        self.feedURL = feedURL
+    }
+
+    func latest() async throws -> AppUpdateInfo {
+        var request = URLRequest(url: feedURL)
+        request.timeoutInterval = 20
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("BetterStreamflix-iOS", forHTTPHeaderField: "User-Agent")
+        let response = try await client.data(for: request)
+        return try JSONDecoder().decode(AppUpdateInfo.self, from: response.data)
+    }
 }
 
 struct UpdateCheckService: Sendable {
-    private let client: GitHubReleaseClient
+    private let feedClient: PublicUpdateFeedClient
 
-    init(client: GitHubReleaseClient = GitHubReleaseClient()) {
-        self.client = client
+    init(feedClient: PublicUpdateFeedClient = PublicUpdateFeedClient()) {
+        self.feedClient = feedClient
+    }
+
+    /// Convenience for tests that still inject an HTTP transport via the feed client.
+    init(client: any HTTPClientProtocol) {
+        self.feedClient = PublicUpdateFeedClient(client: client)
     }
 
     func evaluate(
@@ -35,13 +67,13 @@ struct UpdateCheckService: Sendable {
         currentBuild: String
     ) async -> AppUpdateOutcome {
         do {
-            let release = try await client.latestRelease()
-            if GitHubReleaseClient.isNewer(tagName: release.tagName, than: currentVersion) {
-                return .newerRelease(release)
+            let info = try await feedClient.latest()
+            if isNewer(info: info, currentVersion: currentVersion, currentBuild: currentBuild) {
+                return .newerRelease(info)
             }
             return .upToDate(version: currentVersion, build: currentBuild)
         } catch {
-            return .openReleases(version: currentVersion, build: currentBuild)
+            return .unavailable(version: currentVersion, build: currentBuild)
         }
     }
 
@@ -56,10 +88,79 @@ struct UpdateCheckService: Sendable {
             skippedTagName: skippedTagName
         )
     }
+
+    static func shouldOfferUpdate(
+        info: AppUpdateInfo,
+        currentVersion: String,
+        currentBuild: String,
+        skippedTagName: String
+    ) -> Bool {
+        guard isNewer(info: info, currentVersion: currentVersion, currentBuild: currentBuild) else {
+            return false
+        }
+        guard !skippedTagName.isEmpty else { return true }
+        if let release = Version(info.tagName), let skipped = Version(skippedTagName) {
+            return release != skipped
+        }
+        return info.tagName.compare(skippedTagName, options: [.caseInsensitive, .numeric]) != .orderedSame
+    }
+
+    private static func isNewer(
+        info: AppUpdateInfo,
+        currentVersion: String,
+        currentBuild: String
+    ) -> Bool {
+        if GitHubReleaseClient.isNewer(tagName: info.tagName, than: currentVersion) {
+            return true
+        }
+        // Same marketing version but a newer CI build number still counts as an update.
+        if Version(info.tagName) == Version(currentVersion),
+           let remoteBuild = Int(info.build),
+           let localBuild = Int(currentBuild) {
+            return remoteBuild > localBuild
+        }
+        return false
+    }
+
+    private func isNewer(
+        info: AppUpdateInfo,
+        currentVersion: String,
+        currentBuild: String
+    ) -> Bool {
+        Self.isNewer(info: info, currentVersion: currentVersion, currentBuild: currentBuild)
+    }
 }
 
 enum VersionNumber {
     static func isNewer(_ lhs: String, than rhs: String) -> Bool {
         GitHubReleaseClient.isNewer(tagName: lhs, than: rhs)
+    }
+}
+
+/// Shared with GitHubReleaseClient for tag/version comparisons.
+struct Version: Comparable, Equatable {
+    private let components: [Int]
+
+    init?(_ rawValue: String) {
+        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.first == "v" || value.first == "V" {
+            value.removeFirst()
+        }
+        value = String(value.split(whereSeparator: { $0 == "-" || $0 == "+" }).first ?? "")
+
+        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
+        let parsed = parts.compactMap { Int($0) }
+        guard !parsed.isEmpty, parsed.count == parts.count else { return nil }
+        components = parsed
+    }
+
+    static func < (lhs: Version, rhs: Version) -> Bool {
+        let count = max(lhs.components.count, rhs.components.count)
+        for index in 0..<count {
+            let left = index < lhs.components.count ? lhs.components[index] : 0
+            let right = index < rhs.components.count ? rhs.components[index] : 0
+            if left != right { return left < right }
+        }
+        return false
     }
 }

@@ -635,16 +635,20 @@ actor TMDBClient {
             language: language
         )
         let preferredLanguage = Self.imageLanguageCode(from: language)
-        let logoURL = images?.preferredLogoURL(language: preferredLanguage)
+        let logoURLs = images?.preferredLogoURLs(language: preferredLanguage) ?? []
         async let logo: Data? = {
-            guard let logoURL else { return nil }
-            return try? await imageData(for: logoURL)
+            for url in logoURLs.prefix(6) {
+                if let data = try? await imageData(for: url), Self.isDecodableImage(data) {
+                    return data
+                }
+            }
+            return nil
         }()
 
         var candidateURLs: [URL] = []
         if let images {
             // When a logo will render on top, prefer language-null (textless) stills first.
-            if logoURL != nil {
+            if !logoURLs.isEmpty {
                 candidateURLs.append(contentsOf: images.preferredTextlessHeroURLs())
             }
             candidateURLs.append(contentsOf: images.preferredHeroURLs(language: preferredLanguage))
@@ -746,6 +750,20 @@ actor TMDBClient {
         accessToken: String,
         language: String = "en-US"
     ) async throws -> URL? {
+        try await logoURLs(
+            tmdbID: tmdbID,
+            kind: kind,
+            accessToken: accessToken,
+            language: language
+        ).first
+    }
+
+    private func logoURLs(
+        tmdbID: Int,
+        kind: MediaKind,
+        accessToken: String,
+        language: String
+    ) async throws -> [URL] {
         let preferredLanguage = Self.imageLanguageCode(from: language)
         let lookupCacheURL = try Self.logoLookupCacheURL(
             tmdbID: tmdbID,
@@ -754,7 +772,8 @@ actor TMDBClient {
         )
         if let cachedLookup = await imageCache.data(for: lookupCacheURL),
            let value = String(data: cachedLookup, encoding: .utf8) {
-            return value == "none" ? nil : URL(string: value)
+            if value == "none" { return [] }
+            if let url = URL(string: value) { return [url] }
         }
 
         let payload = try await imagesPayload(
@@ -763,10 +782,10 @@ actor TMDBClient {
             accessToken: accessToken,
             language: language
         )
-        let logoURL = payload.preferredLogoURL(language: preferredLanguage)
-        let cachedValue = logoURL?.absoluteString ?? "none"
+        let urls = payload.preferredLogoURLs(language: preferredLanguage)
+        let cachedValue = urls.first?.absoluteString ?? "none"
         await imageCache.store(Data(cachedValue.utf8), for: lookupCacheURL)
-        return logoURL
+        return urls
     }
 
     private func imagesPayload(
@@ -825,13 +844,25 @@ actor TMDBClient {
         accessToken: String,
         language: String
     ) async throws -> Data? {
-        guard let url = try await logoURL(
+        let urls = try await logoURLs(
             tmdbID: tmdbID,
             kind: kind,
             accessToken: accessToken,
             language: language
-        ) else { return nil }
-        return try await imageData(for: url)
+        )
+        for url in urls.prefix(6) {
+            do {
+                let data = try await imageData(for: url)
+                if Self.isDecodableImage(data) {
+                    return data
+                }
+            } catch where error.isCancellation {
+                throw error
+            } catch {
+                continue
+            }
+        }
+        return nil
     }
 
     private func fetch(
@@ -1218,7 +1249,14 @@ private struct TMDBImagesPayload: Decodable, Sendable {
     }
 
     func preferredLogoURL(language: String) -> URL? {
-        ranked(logos, language: language).first?.url
+        preferredLogoURLs(language: language).first
+    }
+
+    func preferredLogoURLs(language: String) -> [URL] {
+        // UIImage cannot decode TMDB SVG logos — prefer raster clear logos first.
+        let raster = logos.filter { !$0.filePath.lowercased().hasSuffix(".svg") }
+        let pool = raster.isEmpty ? logos : raster
+        return uniqueURLs(from: ranked(pool, language: language).map(\.url))
     }
 
     /// Textless stills (`iso_639_1 == null`) preferred for Featured / Detail heroes
