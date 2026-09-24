@@ -7,12 +7,12 @@ struct HomeView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var sourceLookup: SourceLookupCoordinator
+    @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onInitialLoadCompleted: () -> Void
     @StateObject private var model = HomeViewModel()
     @State private var selectedDetails: ResolvedMediaItem?
     @State private var playback: PlaybackRequest?
-    @State private var watchlistToast: WatchlistFeedback.Toast?
 
     init(onInitialLoadCompleted: @escaping () -> Void = {}) {
         self.onInitialLoadCompleted = onInitialLoadCompleted
@@ -85,10 +85,6 @@ struct HomeView: View {
         .ignoresSafeArea(edges: .top)
         .modifier(HeroViewportModifier())
         .toolbar(.hidden, for: .navigationBar)
-        .overlay(alignment: .top) {
-            WatchlistToastBanner(toast: watchlistToast)
-                .animation(DesignTokens.Motion.toast, value: watchlistToast)
-        }
         .task {
             await model.loadTrending(environment: environment)
             onInitialLoadCompleted()
@@ -113,8 +109,6 @@ struct HomeView: View {
             media: .tmdbCatalogItem(from: trending),
             tmdbMetadata: trending
         )
-
-
     }
 
     private func openDetails(_ item: MediaItem) {
@@ -122,26 +116,12 @@ struct HomeView: View {
     }
 
     private func toggleWatchlist(_ trending: TrendingTitle) {
-        let toast = WatchlistFeedback.toggleTrending(
+        WatchlistFeedback.toggleTrending(
             trending,
             in: library,
-            reduceMotion: reduceMotion
-        ) { toast in
-            withAnimation(DesignTokens.Motion.toast) {
-                watchlistToast = toast
-            }
-            Task {
-                try? await Task.sleep(for: .seconds(1.6))
-                await MainActor.run {
-                    withAnimation(DesignTokens.Motion.toast) {
-                        if watchlistToast == toast {
-                            watchlistToast = nil
-                        }
-                    }
-                }
-            }
-        }
-        _ = toast
+            reduceMotion: reduceMotion,
+            toastStore: watchlistToast
+        )
     }
 
     private func markAsWatched(_ value: WatchProgress) {
@@ -226,6 +206,12 @@ struct TrendingHeroCarousel: View {
                     }
                     .accessibilityHidden(true)
 
+                FeaturedTopChrome(
+                    titleCount: titles.count,
+                    currentIndex: currentIndex
+                )
+                .offset(y: metrics.verticalOffset)
+
                 heroContent
                     .padding(.horizontal, 22)
                     .padding(.bottom, 44)
@@ -239,9 +225,6 @@ struct TrendingHeroCarousel: View {
                     dragProgress: indicatorDragProgress
                 )
                 .padding(.bottom, 18)
-
-                PageTitleOverlay(title: "Home")
-                    .offset(y: metrics.verticalOffset)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
@@ -474,7 +457,10 @@ struct TitleLogoView<Fallback: View>: View {
     }
 
     var body: some View {
-        let logoImage = logoData.flatMap(UIImage.init(data:))
+        let logoImage = logoData.flatMap(UIImage.init(data:)).flatMap { image -> UIImage? in
+            guard image.size.width > 2, image.size.height > 2 else { return nil }
+            return image
+        }
 
         Group {
             if let logoImage {
@@ -490,14 +476,52 @@ struct TitleLogoView<Fallback: View>: View {
                 fallback
             } else {
                 Color.clear
+                    .frame(height: maximumLogoHeight * 0.4)
             }
         }
-            // Reserve one consistent, generously sized logo region. The old
-            // overlay inherited the fallback title's intrinsic width, making a
-            // short title such as "Silo" much smaller than longer title logos.
+            // Reserve one consistent logo region. Logo XOR text — never both.
             .frame(maxWidth: maximumLogoWidth, minHeight: maximumLogoHeight)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(title)
+    }
+}
+
+struct FeaturedTopChrome: View {
+    let titleCount: Int
+    let currentIndex: Int
+
+    var body: some View {
+        VStack {
+            HStack(alignment: .center, spacing: 12) {
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 34, height: 34)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("BetterStreamflix")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("Featured")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                Spacer()
+                if titleCount > 1 {
+                    Text("\(currentIndex + 1)/\(titleCount)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .glassEffectWithFallback(in: Capsule())
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 56)
+            Spacer()
+        }
+        .allowsHitTesting(false)
     }
 }
 

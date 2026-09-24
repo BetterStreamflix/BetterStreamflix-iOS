@@ -3644,6 +3644,12 @@ struct NativePlayerController: UIViewControllerRepresentable {
         private weak var playerViewController: AVPlayerViewController?
         private var prefersZoomedToFill: Bool
         private var lastIsLandscape: Bool?
+        private var gesturesInstalled = false
+        private var volumeHUDInstalled = false
+        private var tapGestureRecognizer: UITapGestureRecognizer?
+        private var doubleTapGestureRecognizer: UITapGestureRecognizer?
+        private var panGestureRecognizer: UIPanGestureRecognizer?
+        private var pinchGestureRecognizer: UIPinchGestureRecognizer?
         private let onZoomChanged: (Bool) -> Void
         let onDismiss: () -> Void
         private var panStartLocation: CGPoint = .zero
@@ -3695,7 +3701,6 @@ struct NativePlayerController: UIViewControllerRepresentable {
         }
 
         func installControls(in controller: AVPlayerViewController) {
-            guard let overlay = controller.contentOverlayView else { return }
             player = controller.player
             playerViewController = controller
             installSystemVolumeHUDSuppressor(in: controller.view)
@@ -3708,27 +3713,43 @@ struct NativePlayerController: UIViewControllerRepresentable {
             settingsButton.showsMenuAsPrimaryAction = true
             settingsButton.accessibilityLabel = "Playback settings"
             configureSubtitleTimingControl()
-            attachControls(to: overlay)
+            if let overlay = controller.contentOverlayView {
+                attachControls(to: overlay)
+            }
+            installGesturesIfNeeded(on: controller.view)
+            updateQualities(availableQualities, selectedQuality: selectedQuality)
+            showSettingsButton()
+        }
+
+        private func installGesturesIfNeeded(on view: UIView) {
+            guard !gesturesInstalled else { return }
+            gesturesInstalled = true
+
             let tapGesture = UITapGestureRecognizer(target: self, action: #selector(playerTapped(_:)))
             tapGesture.cancelsTouchesInView = false
             tapGesture.delegate = self
-            controller.view.addGestureRecognizer(tapGesture)
+            view.addGestureRecognizer(tapGesture)
+            tapGestureRecognizer = tapGesture
+
             let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(playerDoubleTapped(_:)))
             doubleTapGesture.numberOfTapsRequired = 2
             doubleTapGesture.cancelsTouchesInView = false
             doubleTapGesture.delegate = self
-            controller.view.addGestureRecognizer(doubleTapGesture)
+            view.addGestureRecognizer(doubleTapGesture)
+            doubleTapGestureRecognizer = doubleTapGesture
             tapGesture.require(toFail: doubleTapGesture)
+
             let panGesture = UIPanGestureRecognizer(target: self, action: #selector(playerPanned(_:)))
             panGesture.cancelsTouchesInView = false
             panGesture.delegate = self
-            controller.view.addGestureRecognizer(panGesture)
+            view.addGestureRecognizer(panGesture)
+            panGestureRecognizer = panGesture
+
             let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(playerPinched(_:)))
             pinchGesture.cancelsTouchesInView = false
             pinchGesture.delegate = self
-            controller.view.addGestureRecognizer(pinchGesture)
-            updateQualities(availableQualities, selectedQuality: selectedQuality)
-            showSettingsButton()
+            view.addGestureRecognizer(pinchGesture)
+            pinchGestureRecognizer = pinchGesture
         }
 
         private func attachControls(to overlay: UIView) {
@@ -3737,6 +3758,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             playbackErrorView.removeFromSuperview()
             settingsButton.removeFromSuperview()
             subtitleTimingControl.removeFromSuperview()
+            gestureFeedbackLabel.removeFromSuperview()
             overlay.addSubview(bufferingIndicator)
             overlay.addSubview(playbackErrorView)
             overlay.addSubview(settingsButton)
@@ -3770,9 +3792,12 @@ struct NativePlayerController: UIViewControllerRepresentable {
         }
 
         func playerViewDidLayout(_ controller: AVPlayerViewController) {
+            playerViewController = controller
+            player = controller.player
             if let overlay = controller.contentOverlayView {
                 attachControls(to: overlay)
             }
+            installGesturesIfNeeded(on: controller.view)
             let isLandscape = controller.view.bounds.width > controller.view.bounds.height
             guard lastIsLandscape != isLandscape else { return }
             lastIsLandscape = isLandscape
@@ -3804,6 +3829,8 @@ struct NativePlayerController: UIViewControllerRepresentable {
         }
 
         private func installSystemVolumeHUDSuppressor(in view: UIView) {
+            guard !volumeHUDInstalled else { return }
+            volumeHUDInstalled = true
             // AVPlayerViewController already presents its own volume slider. Keeping an
             // MPVolumeView attached makes iOS omit the second, system-level volume HUD.
             systemVolumeHUDSuppressor.translatesAutoresizingMaskIntoConstraints = false
@@ -4174,19 +4201,21 @@ struct NativePlayerController: UIViewControllerRepresentable {
         }
 
         @objc private func playerTapped(_ gesture: UITapGestureRecognizer) {
-            guard !settingsButton.isHidden
-                    || subtitleTimingAvailable else { return }
             let buttonLocation = gesture.location(in: settingsButton)
-            guard !settingsButton.bounds.contains(buttonLocation) else {
+            if !settingsButton.isHidden, settingsButton.bounds.contains(buttonLocation) {
                 showSettingsButton()
                 return
             }
             if let view = gesture.view {
                 let location = gesture.location(in: view)
+                if isTouchInChromeArea(location, in: view) { return }
                 var hitView: UIView? = view.hitTest(location, with: nil)
                 while let current = hitView {
-                    if current is UIControl {
+                    if current === settingsButton || current === subtitleTimingControl {
                         showSettingsButton()
+                        return
+                    }
+                    if current is UIControl {
                         return
                     }
                     hitView = current.superview
@@ -4198,6 +4227,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
         @objc private func playerDoubleTapped(_ gesture: UITapGestureRecognizer) {
             guard let player, let view = gesture.view else { return }
             let location = gesture.location(in: view)
+            if isTouchInChromeArea(location, in: view) { return }
             let delta: Double = location.x < view.bounds.midX ? -10 : 10
             let current = player.currentTime().seconds
             guard current.isFinite else { return }
@@ -4219,6 +4249,12 @@ struct NativePlayerController: UIViewControllerRepresentable {
 
             switch gesture.state {
             case .began:
+                if isTouchInChromeArea(location, in: view) {
+                    panMode = nil
+                    gesture.isEnabled = false
+                    gesture.isEnabled = true
+                    return
+                }
                 panStartLocation = location
                 panMode = nil
                 initialVolume = AVAudioSession.sharedInstance().outputVolume
@@ -4249,6 +4285,16 @@ struct NativePlayerController: UIViewControllerRepresentable {
             }
         }
 
+        private func isTouchInChromeArea(_ location: CGPoint, in view: UIView) -> Bool {
+            let height = view.bounds.height
+            let width = view.bounds.width
+            guard height > 0, width > 0 else { return false }
+            // Keep bottom transport / top system chrome for AVKit.
+            if location.y > height * 0.78 { return true }
+            if location.y < height * 0.12 { return true }
+            return false
+        }
+
         private func setSystemVolume(_ value: Float) {
             let slider = systemVolumeHUDSuppressor.subviews.compactMap { $0 as? UISlider }.first
             slider?.value = value
@@ -4271,6 +4317,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             guard !streams.isEmpty
                     || !availableQualities.isEmpty
                     || subtitleTimingAvailable else { return }
+            settingsButton.isHidden = false
             hideTask?.cancel()
             UIView.animate(withDuration: 0.2) { [settingsButton] in
                 settingsButton.alpha = 0.86
@@ -4296,7 +4343,34 @@ struct NativePlayerController: UIViewControllerRepresentable {
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
-            true
+            // Allow volume/brightness pans with the player, but don't fight scrubbing.
+            if gestureRecognizer === panGestureRecognizer {
+                return false
+            }
+            return true
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            guard let view = gestureRecognizer.view else { return true }
+            let location = touch.location(in: view)
+            if gestureRecognizer === panGestureRecognizer || gestureRecognizer === doubleTapGestureRecognizer {
+                return !isTouchInChromeArea(location, in: view)
+            }
+            if let touched = touch.view, touched is UIControl {
+                return false
+            }
+            return true
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard gestureRecognizer === panGestureRecognizer,
+                  let pan = gestureRecognizer as? UIPanGestureRecognizer,
+                  let view = pan.view else { return true }
+            let velocity = pan.velocity(in: view)
+            return abs(velocity.y) > abs(velocity.x)
         }
 
         func playerViewControllerWillEndFullScreenPresentation(

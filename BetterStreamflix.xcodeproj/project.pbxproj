@@ -59,6 +59,8 @@
 		A1F82C4E9B7D4011AA220011 /* SupportCTAButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220001 /* SupportCTAButton.swift */; };
 		A1F82C4E9B7D4011AA220012 /* WatchlistFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */; };
 		A1F82C4E9B7D4011AA220013 /* PersonProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */; };
+		A1F82C4E9B7D4011AA220014 /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220004 /* MoreView.swift */; };
+		A1F82C4E9B7D4011AA220015 /* WatchlistToastStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -128,6 +130,8 @@
 		A1F82C4E9B7D4011AA220001 /* SupportCTAButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportCTAButton.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistFeedback.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonProfileView.swift; sourceTree = "<group>"; };
+		A1F82C4E9B7D4011AA220004 /* MoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreView.swift; sourceTree = "<group>"; };
+		A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistToastStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -236,6 +240,8 @@
 				A1F82C4E9B7D4011AA220001 /* SupportCTAButton.swift */,
 				A1F82C4E9B7D4011AA220002 /* WatchlistFeedback.swift */,
 				A1F82C4E9B7D4011AA220003 /* PersonProfileView.swift */,
+				A1F82C4E9B7D4011AA220004 /* MoreView.swift */,
+				A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */,
 				CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */,
 			);
 			path = Features;
@@ -356,6 +362,8 @@
 				A1F82C4E9B7D4011AA220011 /* SupportCTAButton.swift in Sources */,
 				A1F82C4E9B7D4011AA220012 /* WatchlistFeedback.swift in Sources */,
 				A1F82C4E9B7D4011AA220013 /* PersonProfileView.swift in Sources */,
+				A1F82C4E9B7D4011AA220014 /* MoreView.swift in Sources */,
+				A1F82C4E9B7D4011AA220015 /* WatchlistToastStore.swift in Sources */,
 				AEEF15D4C149DFE7BE918FC7 /* SupportLinks.swift in Sources */,
 				EBA5E1F5BCFA37AACEF87A34 /* UpdateFeedClient.swift in Sources */,
 				BEC1589F6E3406A694C40439 /* PlaybackDiscovery.swift in Sources */,
@@ -417,7 +425,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.2;
+				MARKETING_VERSION = 0.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -610,7 +618,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.2;
+				MARKETING_VERSION = 0.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

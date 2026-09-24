@@ -7,6 +7,8 @@ struct DetailsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var sourceLookup: SourceLookupCoordinator
+    @EnvironmentObject private var watchlistToast: WatchlistToastStore
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var model: DetailsViewModel
     @State private var selectedSeasonNumber: Int?
@@ -16,7 +18,6 @@ struct DetailsView: View {
     @State private var tmdbTitleLogoData: Data?
     @State private var isHeroArtworkLoading = true
     @State private var isTitleLogoResolved = false
-    @State private var watchlistToast: WatchlistFeedback.Toast?
     @State private var selectedPerson: CastMember?
 
     init(item: MediaItem, tmdbMetadata: TrendingTitle? = nil) {
@@ -56,22 +57,9 @@ struct DetailsView: View {
                                 WatchlistFeedback.toggle(
                                     model.item,
                                     in: library,
-                                    reduceMotion: reduceMotion
-                                ) { toast in
-                                    withAnimation(DesignTokens.Motion.toast) {
-                                        watchlistToast = toast
-                                    }
-                                    Task {
-                                        try? await Task.sleep(for: .seconds(1.6))
-                                        await MainActor.run {
-                                            withAnimation(DesignTokens.Motion.toast) {
-                                                if watchlistToast == toast {
-                                                    watchlistToast = nil
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                    reduceMotion: reduceMotion,
+                                    toastStore: watchlistToast
+                                )
                             },
                             size: 44,
                             glass: true
@@ -102,18 +90,30 @@ struct DetailsView: View {
                 .zIndex(1)
             }
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .coordinateSpace(name: HeroArtworkScrollEffect.detailsCoordinateSpace)
         .background { AppScreenBackground() }
         .ignoresSafeArea(edges: .top)
         .modifier(HeroViewportModifier())
+        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .overlay(alignment: .top) {
-            WatchlistToastBanner(toast: watchlistToast)
-                .padding(.top, 8)
-                .animation(DesignTokens.Motion.toast, value: watchlistToast)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .glassEffectWithFallback(in: Circle())
+                }
+                .accessibilityLabel("Back")
+            }
         }
+        .toolbar(.hidden, for: .tabBar)
         .overlay { if model.isLoading && model.item.overview == nil { ProgressView() } }
         .overlay {
             if let episodeInfo {
@@ -302,13 +302,14 @@ struct DetailsView: View {
     }
 
     private var detailsTitle: some View {
+        // Show either the TMDB title logo or the text title — never both.
         TitleLogoView(
             title: model.item.title,
             logoData: tmdbTitleLogoData,
             showsFallback: isTitleLogoResolved
         ) {
             Text(model.item.title)
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
@@ -318,6 +319,7 @@ struct DetailsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .shadow(color: .black.opacity(0.55), radius: 12, y: 4)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func loadTitleLogo(for item: MediaItem) async -> Data? {

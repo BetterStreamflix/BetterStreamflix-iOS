@@ -83,8 +83,22 @@ struct AppThemePicker: View {
     }
 }
 
+private struct SettingsSafeAreaModifier: ViewModifier {
+    let showsInlineTitle: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if showsInlineTitle {
+            content
+        } else {
+            content.ignoresSafeArea(edges: .top)
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
     @AppStorage("player.autoNext") private var autoNext = true
     @AppStorage("player.defaultQualityHeight") private var defaultQualityHeight = 0
     @AppStorage("player.defaultPlaybackRate") private var defaultPlaybackRate = 1.0
@@ -117,10 +131,16 @@ struct SettingsView: View {
     @State private var isImportingUserData = false
     @State private var pendingImport: PendingUserDataImport?
     @State private var backupNotice: UserDataBackupNotice?
+    /// When pushed from More, use nav chrome instead of the large overlapping page title.
+    var showsInlineTitle: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
-            PageTitleHeader(title: "Settings")
+            if showsInlineTitle {
+                Color.clear.frame(height: 0)
+            } else {
+                PageTitleHeader(title: "Settings")
+            }
 
             Form {
                 Section("Appearance") {
@@ -271,8 +291,9 @@ struct SettingsView: View {
                     .disabled(isCheckingForUpdates)
 
                     SupportCTAStack()
-                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20))
                         .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
 
                     Link(destination: SupportLinks.githubRepository) {
                         Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
@@ -302,8 +323,11 @@ struct SettingsView: View {
         }
         .tint(environment.theme.accent)
         .background { AppScreenBackground() }
-        .ignoresSafeArea(edges: .top)
-        .toolbar(.hidden, for: .navigationBar)
+        .modifier(SettingsSafeAreaModifier(showsInlineTitle: showsInlineTitle))
+        .navigationTitle(showsInlineTitle ? "Settings" : "")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(showsInlineTitle ? .automatic : .hidden, for: .navigationBar)
+        .toolbarBackground(showsInlineTitle ? .visible : .hidden, for: .navigationBar)
         .sheet(item: $updateCheckResult) { result in
             UpdateCheckSheet(result: result)
                 .presentationDetents([.medium, .large])
@@ -363,7 +387,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.0.2"
+        ) as? String ?? "0.0.3"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"
@@ -556,7 +580,7 @@ struct UpdateCheckSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 20) {
                     switch result {
                     case .updateAvailable(let release):
                         updateAvailableContent(release)
@@ -578,9 +602,12 @@ struct UpdateCheckSheet: View {
                             openURL(SupportLinks.githubLatestRelease)
                         } label: {
                             Label("Open latest release", systemImage: "link")
+                                .font(.headline.weight(.semibold))
                                 .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.plain)
+                        .glassEffectWithFallback(in: Capsule())
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -589,14 +616,17 @@ struct UpdateCheckSheet: View {
             .background { AppScreenBackground() }
             .navigationTitle("Check for Updates")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
                         .foregroundStyle(accentColor)
                 }
             }
         }
         .tint(accentColor)
+        .presentationBackground { AppScreenBackground() }
     }
 
     @ViewBuilder
@@ -612,8 +642,11 @@ struct UpdateCheckSheet: View {
         Text(release.name.flatMap { $0.isEmpty ? nil : $0 } ?? release.tagName)
             .font(.headline)
             .foregroundStyle(accentColor)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .glassEffectWithFallback(in: Capsule())
 
-        Divider()
+        Divider().opacity(0.4)
 
         ReleaseNotesMarkdownView(source: release.body, accentColor: accentColor)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -630,6 +663,8 @@ struct UpdateCheckSheet: View {
         if let onRemindLater {
             Button("Remind me later", action: onRemindLater)
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .glassEffectWithFallback(in: Capsule())
         }
         if let onSkipUpdate {
             Button("Skip this version", action: onSkipUpdate)
@@ -655,7 +690,13 @@ struct UpdateCheckSheet: View {
                 .foregroundStyle(accentColor)
             Text(message)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffectWithFallback(
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
     }
 
     private var accentColor: Color { environment.theme.accentBright }

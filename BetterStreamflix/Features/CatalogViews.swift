@@ -571,9 +571,11 @@ struct CatalogView: View {
     @StateObject private var model: TMDBCollectionsViewModel
     @State private var selectedDetails: ResolvedMediaItem?
     let kind: MediaKind
+    var onOpenSearch: (() -> Void)? = nil
 
-    init(kind: MediaKind) {
+    init(kind: MediaKind, onOpenSearch: (() -> Void)? = nil) {
         self.kind = kind
+        self.onOpenSearch = onOpenSearch
         _model = StateObject(wrappedValue: TMDBCollectionsViewModel(
             collections: TMDBCollection.catalogSections(for: kind)
         ))
@@ -582,7 +584,25 @@ struct CatalogView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 26) {
-                PageTitleHeader(title: kind == .movie ? "Movies" : "Series")
+                HStack(alignment: .center) {
+                    PageTitleText(title: kind == .movie ? "Movies" : "Series")
+                    Spacer(minLength: 8)
+                    if let onOpenSearch {
+                        Button(action: onOpenSearch) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .glassEffectWithFallback(in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Search")
+                        .padding(.trailing, 20)
+                        .padding(.top, 58)
+                    }
+                }
+                .padding(.bottom, 12)
+
                 if model.isLoading && model.titles.isEmpty {
                     ForEach(0..<3, id: \.self) { _ in
                         VStack(alignment: .leading, spacing: 10) {

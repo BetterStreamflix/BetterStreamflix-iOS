@@ -34,6 +34,7 @@ struct MediaTitlePosterActions: View {
 
 struct MediaTitleWatchlistAction: View {
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: MediaItem
 
@@ -54,7 +55,8 @@ struct MediaTitleWatchlistAction: View {
             WatchlistFeedback.toggle(
                 existingWatchlistItem ?? item,
                 in: library,
-                reduceMotion: reduceMotion
+                reduceMotion: reduceMotion,
+                toastStore: watchlistToast
             )
         } label: {
             Label(
@@ -67,6 +69,7 @@ struct MediaTitleWatchlistAction: View {
 
 struct TMDBTitlePosterActions: View {
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: TrendingTitle
     let onDetails: () -> Void
@@ -85,7 +88,8 @@ struct TMDBTitlePosterActions: View {
             WatchlistFeedback.toggleTrending(
                 title,
                 in: library,
-                reduceMotion: reduceMotion
+                reduceMotion: reduceMotion,
+                toastStore: watchlistToast
             )
         } label: {
             Label(

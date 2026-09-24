@@ -2,27 +2,25 @@ import SwiftUI
 
 struct RootView: View {
     private enum Tab: Hashable {
-        case home, movies, series, library, search, settings
+        case home, movies, series, library, more
     }
 
     @EnvironmentObject private var environment: AppEnvironment
+    @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var homeTitleTransitionNamespace
     @Namespace private var movieTitleTransitionNamespace
     @Namespace private var seriesTitleTransitionNamespace
     @Namespace private var libraryTitleTransitionNamespace
-    @Namespace private var searchTitleTransitionNamespace
+    @Namespace private var moreTitleTransitionNamespace
     @StateObject private var homeTitleTransitionSelection = TitleTransitionSelection()
     @StateObject private var movieTitleTransitionSelection = TitleTransitionSelection()
     @StateObject private var seriesTitleTransitionSelection = TitleTransitionSelection()
     @StateObject private var libraryTitleTransitionSelection = TitleTransitionSelection()
-    @StateObject private var searchTitleTransitionSelection = TitleTransitionSelection()
+    @StateObject private var moreTitleTransitionSelection = TitleTransitionSelection()
     @State private var selectedTab: Tab = .home
-    @State private var searchIsPresented = false
-    @State private var searchFocusRequest = 0
-    @State private var searchReturnToRootRequest = 0
-    @State private var searchIsShowingDetails = false
+    @State private var catalogSearchRequest = 0
     @State private var isHomeReady = false
     @State private var pendingAutomaticUpdate: GitHubRelease?
     @State private var automaticUpdateRelease: GitHubRelease?
@@ -32,30 +30,34 @@ struct RootView: View {
         ZStack {
             AppScreenBackground()
 
-            TabView(selection: Binding(
-                get: { selectedTab },
-                set: { tab in
-                    selectedTab = tab
-                    searchIsPresented = tab == .search
-                }
-            )) {
+            TabView(selection: $selectedTab) {
                 NavigationStack { HomeView(onInitialLoadCompleted: showHome) }
                     .environment(\.titleTransitionNamespace, homeTitleTransitionNamespace)
                     .environment(\.titleTransitionSelection, homeTitleTransitionSelection)
                     .tabItem { Label("Home", systemImage: "house.fill") }
                     .tag(Tab.home)
 
-                NavigationStack { CatalogView(kind: .movie) }
-                    .environment(\.titleTransitionNamespace, movieTitleTransitionNamespace)
-                    .environment(\.titleTransitionSelection, movieTitleTransitionSelection)
-                    .tabItem { Label("Movies", systemImage: "film.fill") }
-                    .tag(Tab.movies)
+                NavigationStack {
+                    CatalogView(
+                        kind: .movie,
+                        onOpenSearch: { selectedTab = .more; catalogSearchRequest += 1 }
+                    )
+                }
+                .environment(\.titleTransitionNamespace, movieTitleTransitionNamespace)
+                .environment(\.titleTransitionSelection, movieTitleTransitionSelection)
+                .tabItem { Label("Movies", systemImage: "film.fill") }
+                .tag(Tab.movies)
 
-                NavigationStack { CatalogView(kind: .series) }
-                    .environment(\.titleTransitionNamespace, seriesTitleTransitionNamespace)
-                    .environment(\.titleTransitionSelection, seriesTitleTransitionSelection)
-                    .tabItem { Label("Series", systemImage: "tv.fill") }
-                    .tag(Tab.series)
+                NavigationStack {
+                    CatalogView(
+                        kind: .series,
+                        onOpenSearch: { selectedTab = .more; catalogSearchRequest += 1 }
+                    )
+                }
+                .environment(\.titleTransitionNamespace, seriesTitleTransitionNamespace)
+                .environment(\.titleTransitionSelection, seriesTitleTransitionSelection)
+                .tabItem { Label("Series", systemImage: "tv.fill") }
+                .tag(Tab.series)
 
                 NavigationStack { LibraryView() }
                     .environment(\.titleTransitionNamespace, libraryTitleTransitionNamespace)
@@ -63,38 +65,23 @@ struct RootView: View {
                     .tabItem { Label("Library", systemImage: "bookmark.fill") }
                     .tag(Tab.library)
 
-                NavigationStack {
-                    SearchView(
-                        isSearchPresented: $searchIsPresented,
-                        isShowingDetails: $searchIsShowingDetails,
-                        focusRequest: searchFocusRequest,
-                        returnToRootRequest: searchReturnToRootRequest
-                    )
-                }
-                .environment(\.titleTransitionNamespace, searchTitleTransitionNamespace)
-                .environment(\.titleTransitionSelection, searchTitleTransitionSelection)
-                .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                .tag(Tab.search)
-
-                NavigationStack { SettingsView() }
-                    .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                    .tag(Tab.settings)
+                MoreView(openSearchRequest: catalogSearchRequest)
+                    .environment(\.titleTransitionNamespace, moreTitleTransitionNamespace)
+                    .environment(\.titleTransitionSelection, moreTitleTransitionSelection)
+                    .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
+                    .tag(Tab.more)
             }
             .tint(environment.theme.accent)
-            .background {
-                TabBarTapObserver(tabIndex: 4) {
-                    guard selectedTab == .search else { return }
-                    if searchIsShowingDetails {
-                        searchReturnToRootRequest += 1
-                    } else {
-                        searchFocusRequest += 1
-                    }
-                }
-            }
             .overlay(alignment: .top) {
                 SourceLookupStatusOverlay()
                     .safeAreaPadding(.top, 8)
                     .zIndex(100)
+            }
+            .overlay(alignment: .top) {
+                WatchlistToastBanner(toast: watchlistToast.toast)
+                    .safeAreaPadding(.top, 8)
+                    .animation(DesignTokens.Motion.toast, value: watchlistToast.toast)
+                    .zIndex(110)
             }
 
             if !isHomeReady {
@@ -150,9 +137,6 @@ struct RootView: View {
     }
 
     private func checkForUpdatesAtLaunch() async {
-        // Only auto-prompt when the Releases API is reachable without auth.
-        // On a private app repo this quietly no-ops; Settings still offers a
-        // Releases CTA that never needs a PAT in the app.
         do {
             let release = try await GitHubReleaseClient().latestRelease()
             let currentVersion = Bundle.main.object(

@@ -20,7 +20,7 @@ No third-party Swift packages are required.
 
 ## Version
 
-Current marketing version: **0.0.2**. CI advances the build number on each release.
+Current marketing version: **0.0.3**. CI advances the build number on each release.
 
 ## Unsigned IPA (GitHub Actions + Releases)
 
@@ -40,7 +40,7 @@ Every push to `main` runs **Unsigned IPA** (`.github/workflows/unsigned-ipa.yml`
 
 Settings → About → **Check for updates** shows the installed version and opens **GitHub Releases** so you can download the newest unsigned IPA. No personal access token is embedded in the app.
 
-Locally: `./build-unsigned-ipa.sh 0.0.2`.
+Locally: `./build-unsigned-ipa.sh 0.0.3`.
 
 ## Features
 

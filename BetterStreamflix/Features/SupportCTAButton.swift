@@ -57,13 +57,19 @@ struct SupportCTAButton: View {
 
     var body: some View {
         Link(destination: kind.url) {
-            Label(kind.title, systemImage: kind.systemImage)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(kind.labelColor)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(kind.fill, in: Capsule())
-                .shadow(color: kind.fill.opacity(0.35), radius: 10, y: 4)
+            HStack(spacing: 10) {
+                Image(systemName: kind.systemImage)
+                    .font(.body.weight(.semibold))
+                Text(kind.title)
+                    .font(.headline.weight(.semibold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(kind.labelColor)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(kind.fill, in: Capsule())
+            .shadow(color: kind.fill.opacity(0.28), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens in your browser")
@@ -72,10 +78,12 @@ struct SupportCTAButton: View {
 
 struct SupportCTAStack: View {
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             ForEach(SupportCTAKind.allCases) { kind in
                 SupportCTAButton(kind: kind)
             }
         }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
     }
 }

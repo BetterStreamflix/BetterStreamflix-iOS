@@ -13,6 +13,7 @@ enum WatchlistFeedback {
         _ item: MediaItem,
         in library: LibraryStore,
         reduceMotion: Bool = false,
+        toastStore: WatchlistToastStore? = nil,
         onToast: ((Toast) -> Void)? = nil
     ) -> Bool {
         let wasSaved = library.isInWatchlist(item)
@@ -20,13 +21,16 @@ enum WatchlistFeedback {
             library.toggleWatchlist(item)
         }
         let isSaved = !wasSaved
+        let toast: Toast
         if isSaved {
             DesignTokens.Haptics.watchlistAdded()
-            onToast?(Toast(message: "Added to Library", isAdded: true))
+            toast = Toast(message: "Added to Library", isAdded: true)
         } else {
             DesignTokens.Haptics.watchlistRemoved()
-            onToast?(Toast(message: "Removed from Library", isAdded: false))
+            toast = Toast(message: "Removed from Library", isAdded: false)
         }
+        toastStore?.present(toast)
+        onToast?(toast)
         return isSaved
     }
 
@@ -34,17 +38,25 @@ enum WatchlistFeedback {
         _ title: TrendingTitle,
         in library: LibraryStore,
         reduceMotion: Bool = false,
+        toastStore: WatchlistToastStore? = nil,
         onToast: ((Toast) -> Void)? = nil
     ) -> Bool {
         if let existing = library.watchlist.first(where: {
             $0.kind == title.kind && $0.tmdbID == title.id
         }) {
-            return toggle(existing, in: library, reduceMotion: reduceMotion, onToast: onToast)
+            return toggle(
+                existing,
+                in: library,
+                reduceMotion: reduceMotion,
+                toastStore: toastStore,
+                onToast: onToast
+            )
         }
         return toggle(
             .tmdbCatalogItem(from: title),
             in: library,
             reduceMotion: reduceMotion,
+            toastStore: toastStore,
             onToast: onToast
         )
     }
@@ -73,14 +85,10 @@ struct WatchlistToggleButton: View {
                 .animation(DesignTokens.Motion.watchlistBounce, value: bounce)
         }
         .buttonStyle(.plain)
-        .background {
-            if glass {
-                Circle().fill(.clear)
-            }
-        }
         .modifier(WatchlistGlassBackground(enabled: glass))
         .accessibilityLabel(isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist")
-        .sensoryFeedback(.success, trigger: isInWatchlist)
+        // Haptics fire only from WatchlistFeedback.toggle on explicit user action —
+        // never from sensoryFeedback on isInWatchlist (that re-triggers on carousel change).
     }
 }
 
@@ -111,6 +119,7 @@ struct WatchlistToastBanner: View {
                 .foregroundStyle(AppTheme.primaryText)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .padding(.top, 8)
+                .allowsHitTesting(false)
         }
     }
 }

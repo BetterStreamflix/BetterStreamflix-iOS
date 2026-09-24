@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 struct BetterStreamflixApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var environment = AppEnvironment()
+    @StateObject private var watchlistToast = WatchlistToastStore()
 
     var body: some Scene {
         WindowGroup {
@@ -75,6 +76,7 @@ struct BetterStreamflixApp: App {
                 .environmentObject(environment)
                 .environmentObject(environment.library)
                 .environmentObject(environment.sourceLookup)
+                .environmentObject(watchlistToast)
                 .preferredColorScheme(.dark)
         }
     }

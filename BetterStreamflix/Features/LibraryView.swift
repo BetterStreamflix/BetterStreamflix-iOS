@@ -4,6 +4,7 @@ import UIKit
 struct LibraryView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @State private var selectedDetails: ResolvedMediaItem?
     @State private var playback: PlaybackRequest?
     @State private var segment: LibrarySegment = .continueWatching
@@ -144,7 +145,11 @@ struct LibraryView: View {
                                 openDetails(item)
                             }
                             Button(role: .destructive) {
-                                WatchlistFeedback.toggle(item, in: library)
+                                WatchlistFeedback.toggle(
+                                    item,
+                                    in: library,
+                                    toastStore: watchlistToast
+                                )
                             } label: {
                                 DestructiveTrashLabel(title: "Remove from Watchlist")
                             }
