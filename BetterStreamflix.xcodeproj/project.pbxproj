@@ -55,6 +55,7 @@
 		AEEF15D4C149DFE7BE918FC7 /* SupportLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB76389140F4DEF383ED403 /* SupportLinks.swift */; };
 		EBA5E1F5BCFA37AACEF87A34 /* UpdateFeedClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3759D30B936807FCF6DE3220 /* UpdateFeedClient.swift */; };
 		8D299659B0D955AEA40EDA01 /* UpdateFeedClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6633ABEFEE82F8F53913D1 /* UpdateFeedClientTests.swift */; };
+		C741932D111C590EB6BF817C /* PlaybackHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6CDD5B90BB12B78D4E15C69 /* PlaybackHelpers.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +121,7 @@
 		0BB76389140F4DEF383ED403 /* SupportLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportLinks.swift; sourceTree = "<group>"; };
 		3759D30B936807FCF6DE3220 /* UpdateFeedClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeedClient.swift; sourceTree = "<group>"; };
 		FD6633ABEFEE82F8F53913D1 /* UpdateFeedClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeedClientTests.swift; sourceTree = "<group>"; };
+		C6CDD5B90BB12B78D4E15C69 /* PlaybackHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackHelpers.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -224,6 +226,7 @@
 				7CC28E37008904E7CC1AB011 /* SettingsView.swift */,
 				B4B1DCEAD2744F916A11C6FA /* PlayerScreen.swift */,
 				C0079D9B7A6121A832B4A46A /* LibraryView.swift */,
+				C6CDD5B90BB12B78D4E15C69 /* PlaybackHelpers.swift */,
 				CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */,
 			);
 			path = Features;
@@ -340,6 +343,7 @@
 				FB78050B8882CDA321F6E500 /* SettingsView.swift in Sources */,
 				3AD551B75B5D279F626C5E24 /* PlayerScreen.swift in Sources */,
 				5B71B51EDBC76137E2D6EF8D /* LibraryView.swift in Sources */,
+				C741932D111C590EB6BF817C /* PlaybackHelpers.swift in Sources */,
 				AEEF15D4C149DFE7BE918FC7 /* SupportLinks.swift in Sources */,
 				EBA5E1F5BCFA37AACEF87A34 /* UpdateFeedClient.swift in Sources */,
 				BEC1589F6E3406A694C40439 /* PlaybackDiscovery.swift in Sources */,

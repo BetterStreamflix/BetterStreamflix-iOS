@@ -74,7 +74,7 @@ struct LibraryView: View {
             DetailsView(item: item.media, tmdbMetadata: item.tmdbMetadata)
         }
         .fullScreenCover(item: $playback) { request in
-            PlayerScreen(request: request)
+            PlayerScreen(request: request, nextRequest: nil)
         }
     }
 
@@ -218,6 +218,7 @@ struct LibraryView: View {
 }
 
 private enum WatchProgressProxy {
+    @MainActor
     static func resumeRequest(for item: MediaItem, library: LibraryStore) -> PlaybackRequest {
         if let progress = library.latestProgress(for: item) {
             return PlaybackRequest(media: progress.media, episode: progress.episode)

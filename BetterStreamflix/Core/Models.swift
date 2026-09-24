@@ -183,7 +183,8 @@ struct MediaShelf: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-struct PlaybackRequest: Hashable, Sendable {
+struct PlaybackRequest: Identifiable, Hashable, Sendable {
+    var id: String { contentID }
     let media: MediaItem
     let episode: MediaEpisode?
 
