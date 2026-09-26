@@ -25,7 +25,6 @@ struct FirstLaunchSetupView: View {
     @AppStorage("player.subtitleLanguage.primary") private var primarySubtitleLanguage = "en"
     @AppStorage("player.audioLanguage") private var audioLanguage = "en"
     @AppStorage("player.animeAudioLanguage") private var animeAudioLanguage = "en"
-    @State private var showAdvancedProviders = false
     @State private var providerDomainDraft = ""
     @State private var providerDomainError: String?
     @State private var playbackToggles: [PlaybackSourcePreferenceID: Bool] = [:]
@@ -160,7 +159,7 @@ struct FirstLaunchSetupView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Catalog & sources")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Browsing uses TMDB. German sources are first-class for playback — same as Android BetterStreamflix.")
+                Text("Browsing uses TMDB. Every playback language is available and enabled by default — toggle what you need.")
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -177,42 +176,29 @@ struct FirstLaunchSetupView: View {
                 )
 
                 providerGroupCard(
-                    title: "German sources",
-                    caption: "Enabled by default. SerienStream, AniWorld, FilmPalast, and the full DE set.",
-                    sources: PlaybackSourcePreferenceID.sources(in: .german)
-                )
-
-                providerGroupCard(
                     title: "Core resolvers",
                     caption: "StreamingCommunity, anime resolvers, and Stremio addons.",
                     sources: PlaybackSourcePreferenceID.sources(in: .core),
                     includeDomainField: true
                 )
 
-                DisclosureGroup(isExpanded: $showAdvancedProviders) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(
-                            [ProviderLanguageGroup.english, .italian, .spanish, .french, .polish],
-                            id: \.self
-                        ) { group in
-                            providerGroupCard(
-                                title: group.title,
-                                caption: nil,
-                                sources: PlaybackSourcePreferenceID.sources(in: group),
-                                compact: true
-                            )
-                        }
-                    }
-                    .padding(.top, 10)
-                } label: {
-                    Label("Other languages", systemImage: "globe")
-                        .font(.headline.weight(.semibold))
+                ForEach(
+                    [
+                        ProviderLanguageGroup.german,
+                        .english,
+                        .italian,
+                        .spanish,
+                        .french,
+                        .polish,
+                    ],
+                    id: \.self
+                ) { group in
+                    providerGroupCard(
+                        title: group.title,
+                        caption: "Enabled by default. Turn off languages you do not use.",
+                        sources: PlaybackSourcePreferenceID.sources(in: group)
+                    )
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .glassEffectWithFallback(
-                    in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                )
             }
             .padding(22)
         }
@@ -352,7 +338,6 @@ struct FirstLaunchSetupView: View {
             providerDomainError = nil
         } catch {
             providerDomainError = "Enter a valid hostname like streamingunity.win"
-            showAdvancedProviders = true
             return
         }
         AppSetupStore.isCompleted = true
@@ -376,7 +361,7 @@ struct ProvidersSettingsSection: View {
                     Text(AppSetupStore.catalogSource.title)
                         .foregroundStyle(.secondary)
                 }
-                Text("Browsing uses TMDB. German playback sources are first-class; other languages are optional.")
+                Text("Browsing uses TMDB. All playback languages are equal and enabled by default.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -395,12 +380,6 @@ struct ProvidersSettingsSection: View {
                 }
             }
 
-            Section("German sources") {
-                ForEach(PlaybackSourcePreferenceID.sources(in: .german)) { source in
-                    providerToggle(source)
-                }
-            }
-
             Section("Core resolvers") {
                 ForEach(PlaybackSourcePreferenceID.sources(in: .core)) { source in
                     providerToggle(source)
@@ -408,7 +387,14 @@ struct ProvidersSettingsSection: View {
             }
 
             ForEach(
-                [ProviderLanguageGroup.english, .italian, .spanish, .french, .polish],
+                [
+                    ProviderLanguageGroup.german,
+                    .english,
+                    .italian,
+                    .spanish,
+                    .french,
+                    .polish,
+                ],
                 id: \.self
             ) { group in
                 Section(group.title) {

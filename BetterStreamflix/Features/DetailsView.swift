@@ -336,33 +336,34 @@ struct DetailsView: View {
 
     @ViewBuilder
     private var detailChromeOverlay: some View {
-        // Parent ignores the top safe area for the full-bleed hero, so this overlay
-        // starts at y=0 of the screen. Do NOT pad the outer container by topInset —
-        // that left a transparent gap above the sticky material (0.0.8 bug).
-        // Pad the content row instead; the material background fills that padding
-        // so the bar is flush under the status bar / Dynamic Island.
-        let topInset = max(ScreenMetrics.topSafeAreaInset, 47)
+        // The parent ignores the top safe area for the full-bleed hero. The
+        // chrome overlay must ALSO ignore the top safe area so its frame starts
+        // at the physical top of the screen. Padding the content row by the
+        // real inset then places the back control flush under the status bar /
+        // Dynamic Island — without a double-inset gap above the bar.
+        let topInset = ScreenMetrics.topSafeAreaInset
+        let rowHeight: CGFloat = 44
         let leading: CGFloat = 12
-        let contentTopGap: CGFloat = 2
-        let contentBottomGap: CGFloat = showsCompactHeader ? 6 : 0
 
-        HStack(spacing: 0) {
-            DetailBackControl(action: { dismiss() })
-            if showsCompactHeader {
-                Spacer(minLength: 0)
-                compactHeaderTitle
-                    .frame(maxWidth: 200)
-                Spacer(minLength: 0)
-                Color.clear
-                    .frame(width: DetailBackControl.size, height: DetailBackControl.size)
-            } else {
-                Spacer(minLength: 0)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                DetailBackControl(action: { dismiss() })
+                if showsCompactHeader {
+                    Spacer(minLength: 0)
+                    compactHeaderTitle
+                        .frame(maxWidth: 200)
+                    Spacer(minLength: 0)
+                    Color.clear
+                        .frame(width: DetailBackControl.size, height: DetailBackControl.size)
+                } else {
+                    Spacer(minLength: 0)
+                }
             }
+            .padding(.horizontal, leading)
+            .frame(height: rowHeight, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
-        .padding(.leading, leading)
-        .padding(.trailing, leading)
-        .padding(.top, topInset + contentTopGap)
-        .padding(.bottom, contentBottomGap)
+        .padding(.top, topInset)
         .frame(maxWidth: .infinity, alignment: .top)
         .background(alignment: .top) {
             if showsCompactHeader {
@@ -373,11 +374,12 @@ struct DetailsView: View {
                             .fill(.white.opacity(0.1))
                             .frame(height: 0.5)
                     }
-                    // Extend into the physical status-bar region if the row frame
-                    // ever sits slightly below y=0; primary fill is the padded row.
+                    .frame(height: topInset + rowHeight)
+                    .frame(maxWidth: .infinity)
                     .ignoresSafeArea(edges: .top)
             }
         }
+        .ignoresSafeArea(edges: .top)
         .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactHeader)
     }
 

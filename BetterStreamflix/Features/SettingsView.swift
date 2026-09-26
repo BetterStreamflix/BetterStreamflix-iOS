@@ -390,7 +390,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.1.0"
+        ) as? String ?? "0.1.1"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"

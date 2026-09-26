@@ -634,11 +634,16 @@ struct CatalogView: View {
                     ContentUnavailableView(
                         "Nothing to browse",
                         systemImage: kind == .movie ? "film" : "tv",
-                        description: Text("Pull to refresh, or check your connection and try again.")
+                        description: Text("Check your connection, then tap Retry.")
                     )
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 48)
+                    Button("Retry") {
+                        Task { await model.load(environment: environment, force: true) }
+                    }
+                    .buttonStyle(AppPrimaryButtonStyle(glow: environment.theme.glow, minHeight: 44))
+                    .padding(.horizontal, 40)
                 }
                 ForEach(model.collections) { collection in
                     if let titles = model.titles[collection], !titles.isEmpty {
@@ -654,12 +659,12 @@ struct CatalogView: View {
             .padding(.bottom)
             .background {
                 AppScreenBackground()
-                    .padding(.vertical, -400)
+                    .ignoresSafeArea()
             }
         }
         .scrollIndicators(.automatic)
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-        .background { AppScreenBackground() }
+        .background { AppScreenBackground().ignoresSafeArea() }
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .tabBar)
@@ -667,7 +672,9 @@ struct CatalogView: View {
             DetailsView(item: $0.media, tmdbMetadata: $0.tmdbMetadata)
         }
         .task { await model.load(environment: environment) }
-        .refreshable { await model.load(environment: environment, force: true) }
+        // No .refreshable — the system pull gesture was producing a black overscroll
+        // bar and an unintended reload haptic on Series/Movies. Force-refresh stays
+        // available via empty-state retry and revisiting the tab.
         .errorAlert($model.errorMessage)
     }
 

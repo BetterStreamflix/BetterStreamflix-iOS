@@ -221,6 +221,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var trendingTitles: [TrendingTitle] = []
     @Published private(set) var tmdbShelves: [TMDBCollection: [TrendingTitle]] = [:]
     @Published private(set) var carouselAssets = TMDBCarouselAssets()
+    @Published private(set) var carouselLogosResolved = false
     @Published private(set) var isLoading = false
     @Published private(set) var isTrendingLoading = false
     @Published var errorMessage: String?
@@ -229,6 +230,7 @@ final class HomeViewModel: ObservableObject {
     func loadTrending(environment: AppEnvironment, force: Bool = false) async {
         guard force || trendingTitles.isEmpty else { return }
         isTrendingLoading = true
+        carouselLogosResolved = false
         defer { isTrendingLoading = false }
         do {
             async let hero = environment.trendingTitles()
@@ -250,9 +252,13 @@ final class HomeViewModel: ObservableObject {
             trendingTitles = heroTitles
             trendingMessage = trendingTitles.isEmpty ? "TMDB did not return any trending titles." : nil
             carouselAssets = await environment.preloadCarouselAssets(for: heroTitles)
+            carouselLogosResolved = true
         }
         catch where error.isCancellation { }
-        catch { trendingMessage = error.localizedDescription }
+        catch {
+            trendingMessage = error.localizedDescription
+            carouselLogosResolved = true
+        }
     }
 
 }

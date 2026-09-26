@@ -806,19 +806,21 @@ actor TMDBClient {
             return payload
         }
 
+        // Ask TMDB for preferred + English + language-null assets explicitly.
+        // Without include_image_language, some CDN/cache paths return a thin set
+        // that omits clear title logos and textless backdrops.
         let includedLanguages = [preferredLanguage, "en", "null"]
-            .reduce(into: [String]()) { values, language in
-                if !values.contains(language) { values.append(language) }
+            .reduce(into: [String]()) { values, code in
+                if !code.isEmpty, !values.contains(code) { values.append(code) }
             }
             .joined(separator: ",")
 
         var components = URLComponents(
             string: "https://api.themoviedb.org/3/\(kind == .movie ? "movie" : "tv")/\(tmdbID)/images"
         )
-        // Omit include_image_language filter so clear title logos in any language
-        // are available; ranking still prefers the active language / English.
         components?.queryItems = [
             URLQueryItem(name: "language", value: language),
+            URLQueryItem(name: "include_image_language", value: includedLanguages),
         ]
         guard let url = components?.url else { throw AppError.invalidURL }
 
@@ -1030,7 +1032,8 @@ actor TMDBClient {
         language: String
     ) throws -> URL {
         var components = URLComponents()
-        components.scheme = "tmdb-logo"
+        // v2: invalidate stale "none" / thin-logo lookups from earlier image filters.
+        components.scheme = "tmdb-logo-v2"
         components.host = kind.rawValue
         components.path = "/\(tmdbID)"
         components.queryItems = [URLQueryItem(name: "language", value: language)]
@@ -1044,7 +1047,8 @@ actor TMDBClient {
         language: String
     ) throws -> URL {
         var components = URLComponents()
-        components.scheme = "tmdb-images"
+        // v2: paired with include_image_language so textless + logo sets refill.
+        components.scheme = "tmdb-images-v2"
         components.host = kind.rawValue
         components.path = "/\(tmdbID)"
         components.queryItems = [URLQueryItem(name: "language", value: language)]
@@ -1261,19 +1265,20 @@ private struct TMDBImagesPayload: Decodable, Sendable {
 
     /// Textless stills (`iso_639_1 == null`) preferred for Featured / Detail heroes
     /// when a clear title logo will sit on top of the artwork.
+    /// Backdrops first — title-baked typography is far more common on posters.
     func preferredTextlessHeroURLs() -> [URL] {
-        let textlessPosters = posters.filter { $0.languageCode == nil }
         let textlessBackdrops = backdrops.filter { $0.languageCode == nil }
+        let textlessPosters = posters.filter { $0.languageCode == nil }
         return uniqueURLs(
-            from: ranked(textlessPosters, language: "").map(\.url)
-                + ranked(textlessBackdrops, language: "").map(\.url)
+            from: ranked(textlessBackdrops, language: "").map(\.url)
+                + ranked(textlessPosters, language: "").map(\.url)
         )
     }
 
     func preferredHeroURLs(language: String) -> [URL] {
         uniqueURLs(
-            from: ranked(posters, language: language).map(\.url)
-                + ranked(backdrops, language: language).map(\.url)
+            from: ranked(backdrops, language: language).map(\.url)
+                + ranked(posters, language: language).map(\.url)
         )
     }
 

@@ -2474,7 +2474,7 @@ final class PlayerSession: ObservableObject {
         // A signed HLS item can fail while paused. AVPlayer does not publish the
         // same status transition again when its system Play button is pressed,
         // leaving the crossed-out play icon stuck unless we replace the item.
-        if let lastItemFailureAt, Date().timeIntervalSince(lastItemFailureAt) < 1.2 {
+        if let lastItemFailureAt, Date().timeIntervalSince(lastItemFailureAt) < 0.9 {
             return
         }
         lastItemFailureAt = Date()
@@ -2579,7 +2579,8 @@ final class PlayerSession: ObservableObject {
         isBuffering = false
         playbackState = .failed
         player.pause()
-        playbackErrorMessage = "Playback stalled. Check your connection, then tap Retry to resume from where you left off."
+        playbackErrorMessage =
+            "Couldn't keep this stream playing. Tap Retry to reconnect from where you left off, or pick another source."
         publishNowPlayingInfo()
     }
 
@@ -3353,11 +3354,12 @@ enum PlaybackRecoveryAction: Equatable, Sendable {
 }
 
 enum PlaybackRecoveryPolicy {
-    static let watchdogInterval: Duration = .seconds(8)
-    static let minimumBufferGrowth = 0.35
-    static let seekGracePeriod: TimeInterval = 12
-    static let stagnantChecksBeforeRecovery = 5
-    static let maximumSourceRefreshes = 4
+    /// Check buffer health more often so stalled streams recover sooner.
+    static let watchdogInterval: Duration = .seconds(5)
+    static let minimumBufferGrowth = 0.25
+    static let seekGracePeriod: TimeInterval = 8
+    static let stagnantChecksBeforeRecovery = 3
+    static let maximumSourceRefreshes = 5
 
     static func action(
         trigger: PlaybackRecoveryTrigger,

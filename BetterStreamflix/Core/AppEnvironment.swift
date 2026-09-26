@@ -380,6 +380,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     init() {
+        AppSetupStore.migrateEqualProvidersIfNeeded()
         theme = AppTheme(
             persistedValue: UserDefaults.standard.string(forKey: "appearance.themeColor")
         )
@@ -612,32 +613,46 @@ final class AppEnvironment: ObservableObject {
 
     static func logoLanguageCandidates() -> [String] {
         let preferred = Locale.preferredLanguages.first ?? "en-US"
-        return ["en-US", preferred].reduce(into: [String]()) { values, language in
-            if !values.contains(language) { values.append(language) }
-        }
+        let short = String(preferred.prefix(2)).lowercased()
+        return ["en-US", preferred, short, "de", "en"]
+            .filter { !$0.isEmpty }
+            .reduce(into: [String]()) { values, language in
+                if !values.contains(where: { $0.caseInsensitiveCompare(language) == .orderedSame }) {
+                    values.append(language)
+                }
+            }
     }
 
     func preloadCarouselAssets(
         for titles: [TrendingTitle],
-        timeout: Duration = .seconds(8)
+        timeout: Duration = .seconds(14)
     ) async -> TMDBCarouselAssets {
         guard let token = try? tmdbAccessToken() else { return TMDBCarouselAssets() }
-        // Prefer English title logos (same ranking Featured/Detail share).
-        var assets = TMDBCarouselAssets()
-        for language in Self.logoLanguageCandidates() {
-            let batch = await tmdbClient.carouselAssets(
-                for: titles,
-                accessToken: token,
-                language: language,
-                timeout: timeout
-            )
-            for (key, data) in batch.artworkDataByKey where assets.artworkDataByKey[key] == nil {
-                assets.artworkDataByKey[key] = data
+        // One generous pass with English ranking fills most logos; a second pass
+        // only backfills titles that still lack a clear logo.
+        var assets = await tmdbClient.carouselAssets(
+            for: titles,
+            accessToken: token,
+            language: "en-US",
+            timeout: timeout
+        )
+        let missingLogoTitles = titles.filter { assets.logoDataByKey[$0.lookupKey] == nil }
+        if !missingLogoTitles.isEmpty {
+            for language in Self.logoLanguageCandidates().dropFirst() {
+                let batch = await tmdbClient.carouselAssets(
+                    for: missingLogoTitles,
+                    accessToken: token,
+                    language: language,
+                    timeout: .seconds(8)
+                )
+                for (key, data) in batch.artworkDataByKey where assets.artworkDataByKey[key] == nil {
+                    assets.artworkDataByKey[key] = data
+                }
+                for (key, data) in batch.logoDataByKey where assets.logoDataByKey[key] == nil {
+                    assets.logoDataByKey[key] = data
+                }
+                if assets.logoDataByKey.count >= titles.count { break }
             }
-            for (key, data) in batch.logoDataByKey where assets.logoDataByKey[key] == nil {
-                assets.logoDataByKey[key] = data
-            }
-            if assets.logoDataByKey.count >= titles.count { break }
         }
         storeTitleLogos(from: assets)
         return assets

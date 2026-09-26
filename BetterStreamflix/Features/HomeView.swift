@@ -25,6 +25,7 @@ struct HomeView: View {
                     TrendingHeroCarousel(
                         titles: model.trendingTitles,
                         assets: model.carouselAssets,
+                        logosResolved: model.carouselLogosResolved,
                         resolvingKeys: sourceLookup.activeKeys,
                         onDetails: openDetails,
                         onToggleWatchlist: toggleWatchlist
@@ -149,6 +150,7 @@ struct TrendingHeroCarousel: View {
     @Environment(\.titleTransitionSelection) private var transitionSelection
     let titles: [TrendingTitle]
     let assets: TMDBCarouselAssets
+    let logosResolved: Bool
     let resolvingKeys: Set<String>
     let onDetails: (TrendingTitle) -> Void
     let onToggleWatchlist: (TrendingTitle) -> Void
@@ -282,7 +284,7 @@ struct TrendingHeroCarousel: View {
                 TitleLogoView(
                     title: currentTitle.title,
                     logoData: assets.logoDataByKey[currentTitle.lookupKey],
-                    showsFallback: true
+                    showsFallback: logosResolved
                 ) {
                     Text(currentTitle.title)
                         .font(.system(size: 34, weight: .bold, design: .rounded))

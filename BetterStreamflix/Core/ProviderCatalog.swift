@@ -12,6 +12,9 @@ enum ProviderLanguageGroup: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    /// German is kept available but no longer privileged over other languages.
+    var isFirstClass: Bool { false }
+
     var title: String {
         switch self {
         case .german: "German"
@@ -23,9 +26,6 @@ enum ProviderLanguageGroup: String, CaseIterable, Identifiable, Codable {
         case .core: "Core"
         }
     }
-
-    /// German is first-class in BetterStreamflix (same as Android language filter).
-    var isFirstClass: Bool { self == .german || self == .core }
 }
 
 /// Full BetterStreamflix VOD playback source inventory (Android `Provider.providers` minus live/IPTV/platform).
@@ -37,7 +37,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case animeIL
     case stremio
 
-    // German — first-class
+    // German
     case serienstream
     case aniworld
     case filmpalast
@@ -192,7 +192,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch languageGroup {
-        case .german: "German audio · BetterStreamflix DE"
+        case .german: "German audio streams"
         case .english: "English streams"
         case .italian: "Italian streams"
         case .spanish: "Spanish / LatAm streams"
@@ -212,10 +212,8 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
 
     var defaultsKey: String { "playback.provider.\(rawValue).enabled" }
 
-    /// DE + core on by default; other languages opt-in so discovery stays snappy.
-    var defaultEnabled: Bool {
-        languageGroup == .german || languageGroup == .core
-    }
+    /// Every playback source is enabled by default — no language is privileged.
+    var defaultEnabled: Bool { true }
 
     /// Exact provider `id` values used by `PlaybackProvider` implementations.
     var registryMatchIDs: [String] {
@@ -243,6 +241,16 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
 enum AppSetupStore {
     static let completedKey = "setup.completed"
     static let catalogSourceKey = "catalog.source"
+    static let equalProvidersMigrationKey = "playback.providers.equalLanguages.v1"
+
+    /// One-shot: enable every playback source after removing the German-only default bias.
+    static func migrateEqualProvidersIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: equalProvidersMigrationKey) else { return }
+        for source in PlaybackSourcePreferenceID.allCases {
+            UserDefaults.standard.set(true, forKey: source.defaultsKey)
+        }
+        UserDefaults.standard.set(true, forKey: equalProvidersMigrationKey)
+    }
 
     static var isCompleted: Bool {
         get {
