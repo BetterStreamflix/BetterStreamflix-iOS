@@ -113,13 +113,12 @@ struct SettingsView: View {
     private var subtitleLoadingModeRawValue = SubtitleLoadingMode.fast.rawValue
     @AppStorage("subtitle.provider.subdl.enabled")
     private var subDLSubtitlesEnabled = true
-
+    @AppStorage("subtitle.provider.opensubtitles.enabled")
+    private var openSubtitlesEnabled = true
     @AppStorage("subtitle.provider.wizdom.enabled")
     private var wizdomSubtitlesEnabled = true
-
     @AppStorage("subtitle.provider.ktuvit.enabled")
     private var ktuvitSubtitlesEnabled = true
-
     @AppStorage("subtitle.provider.externalStreams.enabled")
     private var externalStreamSubtitlesEnabled = true
     @AppStorage("player.subtitleSync.autoSelectLatest") private var autoSelectLatestSubtitleSync = true
@@ -183,7 +182,11 @@ struct SettingsView: View {
 
                 ProvidersSettingsSection()
 
-                Section("Playback Languages") {
+                Section("Subtitles & Audio") {
+                    Toggle("Show subtitles by default", isOn: $subtitlesEnabledByDefault)
+                    languagePicker("Preferred subtitle language", selection: $primarySubtitleLanguage)
+                    languagePicker("Backup subtitle language", selection: $secondarySubtitleLanguage, allowsNone: true)
+                    languagePicker("Preferred audio track", selection: $audioLanguage)
                     Picker("Anime audio", selection: $animeAudioLanguage) {
                         Text("English").tag("en")
                         Text("Japanese").tag("ja")
@@ -197,20 +200,16 @@ struct SettingsView: View {
                         Text("Hebrew").tag("he")
                     }
                     .tint(environment.theme.accent)
-                    Toggle("Subtitles on by default", isOn: $subtitlesEnabledByDefault)
-                    languagePicker("Default subtitles", selection: $primarySubtitleLanguage)
-                    languagePicker("Backup subtitles", selection: $secondarySubtitleLanguage, allowsNone: true)
-                    languagePicker("Default audio", selection: $audioLanguage)
-                    Text("Provider language is chosen under Catalog & Providers. These controls set in-stream audio/subtitle tracks and anime ranking when Core is enabled.")
+                    Text("In the player, tap the CC button to turn subtitles on/off or pick a track. Use the settings button for Source & Quality and Subtitle Sync.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("For multi-audio streams, if the selected audio track is unavailable, English is used automatically.")
+                    Text("Provider language is chosen under Catalog & Providers. These controls set in-stream tracks and anime ranking when Core is enabled.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .listRowBackground(AppTheme.surface)
-                Section("Third-party Subtitles") {
-                    Picker("Subtitle Loading", selection: $subtitleLoadingModeRawValue) {
+                Section {
+                    Picker("When to load subtitles", selection: $subtitleLoadingModeRawValue) {
                         ForEach(SubtitleLoadingMode.allCases) { mode in
                             Text(mode.title).tag(mode.rawValue)
                         }
@@ -222,9 +221,10 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
 
                     Toggle("SubDL", isOn: $subDLSubtitlesEnabled)
+                    Toggle("OpenSubtitles", isOn: $openSubtitlesEnabled)
                     Toggle("Wizdom", isOn: $wizdomSubtitlesEnabled)
                     Toggle("Ktuvit", isOn: $ktuvitSubtitlesEnabled)
-                    Toggle("External Streams", isOn: $externalStreamSubtitlesEnabled)
+                    Toggle("Stremio / External Streams", isOn: $externalStreamSubtitlesEnabled)
 
                     Toggle(
                         "Use latest saved sync automatically",
@@ -237,10 +237,14 @@ struct SettingsView: View {
                     }
 
                     Text(
-                        "Choose which third-party subtitle services BetterStreamflix should search. Fewer sources can improve playback startup time."
+                        "Turn these on to search online subtitle catalogs while a title plays. Fewer sources can speed up startup. OpenSubtitles was previously registered but not exposed here."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                } header: {
+                    Text("Subtitle Sources")
+                } footer: {
+                    Text("Settings → Subtitle Sources is where you enable SubDL, OpenSubtitles, Wizdom, Ktuvit, and Stremio. In the player, use the CC control to show or hide captions.")
                 }
                 .listRowBackground(AppTheme.surface)
                 Section("Backup & Restore") {
@@ -390,7 +394,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.1.2"
+        ) as? String ?? "0.1.3"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"
@@ -404,23 +408,14 @@ struct SettingsView: View {
     private var subtitleProviderSummary: String {
         let count = [
             subDLSubtitlesEnabled,
+            openSubtitlesEnabled,
             wizdomSubtitlesEnabled,
             ktuvitSubtitlesEnabled,
-            externalStreamSubtitlesEnabled
+            externalStreamSubtitlesEnabled,
         ]
         .filter { $0 }
         .count
-
-        switch count {
-        case 0:
-            return "None"
-        case 4:
-            return "All"
-        case 1:
-            return "1 selected"
-        default:
-            return "\(count) selected"
-        }
+        return SubtitleProviderPreferences.summary(enabledCount: count)
     }
 
     private var exportFilename: String {

@@ -336,23 +336,20 @@ struct DetailsView: View {
 
     @ViewBuilder
     private var detailChromeOverlay: some View {
-        // The parent ignores the top safe area for the full-bleed hero. The
-        // chrome overlay must ALSO ignore the top safe area so its frame starts
-        // at the physical top of the screen. Padding the content row by the
-        // real inset then places the back control flush under the status bar /
-        // Dynamic Island — without a double-inset gap above the bar.
+        // Flush under the status bar / Dynamic Island: overlay ignores top safe
+        // area, then pads a slim control row by the real inset only once.
         let topInset = ScreenMetrics.topSafeAreaInset
-        let rowHeight: CGFloat = 44
-        let leading: CGFloat = 12
+        let rowHeight: CGFloat = 36
+        let leading: CGFloat = 10
 
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 DetailBackControl(action: { dismiss() })
                 if showsCompactHeader {
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 8)
                     compactHeaderTitle
-                        .frame(maxWidth: 200)
-                    Spacer(minLength: 0)
+                        .frame(maxWidth: 220)
+                    Spacer(minLength: 8)
                     Color.clear
                         .frame(width: DetailBackControl.size, height: DetailBackControl.size)
                 } else {
@@ -369,10 +366,14 @@ struct DetailsView: View {
             if showsCompactHeader {
                 Rectangle()
                     .fill(.ultraThinMaterial)
+                    .opacity(0.92)
                     .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .fill(.white.opacity(0.1))
-                            .frame(height: 0.5)
+                        LinearGradient(
+                            colors: [.white.opacity(0.14), .white.opacity(0.02)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(height: 0.5)
                     }
                     .frame(height: topInset + rowHeight)
                     .frame(maxWidth: .infinity)
@@ -389,15 +390,16 @@ struct DetailsView: View {
             title: model.item.title,
             logoData: tmdbTitleLogoData,
             showsFallback: isTitleLogoResolved,
-            maximumLogoWidth: 150,
-            maximumLogoHeight: 22
+            maximumLogoWidth: 168,
+            maximumLogoHeight: 20
         ) {
             Text(model.item.title)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.white)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.95))
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.75)
         }
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private var detailsTitle: some View {
@@ -420,7 +422,8 @@ struct DetailsView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .shadow(color: .black.opacity(0.55), radius: 12, y: 4)
         .accessibilityAddTraits(.isHeader)
-        .opacity(showsCompactHeader ? 0.18 : 1)
+        .opacity(showsCompactHeader ? 0 : 1)
+        .accessibilityHidden(showsCompactHeader)
         .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactHeader)
     }
 
@@ -736,8 +739,8 @@ enum HeroArtworkScrollEffect {
     static let disappearanceDistance: CGFloat = 500
     static let maximumDimming: Double = 0.64
     static let upwardParallaxCompensation: CGFloat = 0.35
-    /// Reveal the compact sticky header once the in-content logo has scrolled past the status bar.
-    static let compactHeaderRevealDistance: CGFloat = 168
+    /// Reveal the compact sticky header once the in-content logo approaches the chrome.
+    static let compactHeaderRevealDistance: CGFloat = 148
 
     static func metrics(minY: CGFloat, reduceMotion: Bool, heroHeight: CGFloat) -> Metrics {
         let upwardScroll = max(0, -minY)
@@ -772,27 +775,27 @@ private struct DetailsHeroScrollOffsetKey: PreferenceKey {
 }
 
 struct DetailBackControl: View {
-    static let size: CGFloat = 36
+    static let size: CGFloat = 32
 
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: Self.size, height: Self.size)
                 .contentShape(Circle())
                 .background {
                     Circle()
-                        .fill(.black.opacity(0.28))
+                        .fill(.black.opacity(0.22))
                 }
                 .glassEffectWithFallback(in: Circle())
                 .overlay {
                     Circle()
-                        .stroke(.white.opacity(0.28), lineWidth: 0.8)
+                        .stroke(.white.opacity(0.22), lineWidth: 0.7)
                 }
-                .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
+                .shadow(color: .black.opacity(0.28), radius: 6, y: 1)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Back")

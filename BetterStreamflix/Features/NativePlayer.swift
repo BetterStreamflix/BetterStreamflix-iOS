@@ -300,6 +300,7 @@ final class PlayerSession: ObservableObject {
     @Published private(set) var isBuffering = false
     @Published private(set) var playbackErrorMessage: String?
     @Published private(set) var playbackState: PlaybackSessionState = .idle
+    @Published private(set) var recoveryAttemptCount = 0
 
     var onEnded: (() -> Void)?
     var onSourceRefreshNeeded: (() async -> Bool)?
@@ -454,6 +455,7 @@ final class PlayerSession: ObservableObject {
                    self.player.timeControlStatus == .playing,
                    self.position >= self.recoveryBaselinePosition + 5 {
                     self.automaticSourceRefreshAttempts = 0
+                    self.recoveryAttemptCount = 0
                     self.playbackErrorMessage = nil
                 }
                 self.publishNowPlayingInfo()
@@ -944,6 +946,7 @@ final class PlayerSession: ObservableObject {
         sourceRefreshRequestedForURL = nil
         needsSourceRefreshAfterBackground = false
         automaticSourceRefreshAttempts = 0
+        recoveryAttemptCount = 0
         playbackErrorMessage = nil
         player.pause()
         removeStudioTimeObserver()
@@ -963,6 +966,7 @@ final class PlayerSession: ObservableObject {
         position = 0
         duration = 0
         automaticSourceRefreshAttempts = 0
+        recoveryAttemptCount = 0
         recoveryBaselinePosition = 0
         playbackErrorMessage = nil
     }
@@ -981,6 +985,7 @@ final class PlayerSession: ObservableObject {
         guard currentSourceURL != nil else { return }
         playbackErrorMessage = nil
         automaticSourceRefreshAttempts = 0
+        recoveryAttemptCount = 0
         sourceRefreshRequestedForURL = nil
         lastItemFailureAt = nil
         playbackWasRequested = true
@@ -1192,6 +1197,7 @@ final class PlayerSession: ObservableObject {
         playbackErrorMessage = nil
         // The view model bounds retries per server; allow recovery on the new server.
         automaticSourceRefreshAttempts = 0
+        recoveryAttemptCount = 0
         if let selectedAudioLanguage { audioLanguage = selectedAudioLanguage }
         if subtitlesWereOff { primarySubtitleLanguage = "" }
         let restoredSubtitleID = selectedRendition.flatMap { rendition in
@@ -1833,9 +1839,7 @@ final class PlayerSession: ObservableObject {
         let cached = await subtitleCache.cachedRenditions(for: contentID)
         let currentNativeKeys = Set(nativeSubtitleDescriptors.map(\.subtitleSource.syncKey))
         let currentSourceKeys = Set(source.subtitles.map(\.syncKey))
-        let contentProviderIDs: Set<String> = [
-            "subdl", "wizdom", "ktuvit", "external-stream-subtitles"
-        ]
+        let contentProviderIDs = SubtitleProviderPreferences.contentProviderIDs
         return cached.filter { entry in
             let subtitle = entry.rendition.subtitle
             if subtitle.providerID == "native-hls" {
@@ -2455,6 +2459,7 @@ final class PlayerSession: ObservableObject {
         pendingSourceSwitchRate = recovery.rate
         nextReplacementShouldPlay = recovery.shouldPlay
         automaticSourceRefreshAttempts += 1
+        recoveryAttemptCount = automaticSourceRefreshAttempts
         recoveryBaselinePosition = position
         recoveryWatchdogTask?.cancel()
         recoveryWatchdogTask = nil
@@ -2580,7 +2585,7 @@ final class PlayerSession: ObservableObject {
         playbackState = .failed
         player.pause()
         playbackErrorMessage =
-            "Couldn't keep this stream playing. Tap Retry to reconnect from where you left off, or pick another source."
+            "Couldn't keep this stream playing. Tap Retry to reconnect, Try next source for another mirror, or pick one from Playback Settings."
         publishNowPlayingInfo()
     }
 
@@ -3355,10 +3360,10 @@ enum PlaybackRecoveryAction: Equatable, Sendable {
 
 enum PlaybackRecoveryPolicy {
     /// Check buffer health more often so stalled streams recover sooner.
-    static let watchdogInterval: Duration = .seconds(5)
+    static let watchdogInterval: Duration = .seconds(4)
     static let minimumBufferGrowth = 0.25
     static let seekGracePeriod: TimeInterval = 8
-    static let stagnantChecksBeforeRecovery = 3
+    static let stagnantChecksBeforeRecovery = 2
     static let maximumSourceRefreshes = 5
 
     static func action(
@@ -3567,6 +3572,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
     let onAdjustSubtitleTiming: (Double) -> Void
     let onOpenSubtitleSync: () -> Void
     let onRetryPlayback: () -> Void
+    let onTryNextSource: () -> Void
     let onZoomChanged: (Bool) -> Void
     let onWillDismiss: () -> Void
     let onDismiss: () -> Void
@@ -3579,6 +3585,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onAdjustSubtitleTiming: onAdjustSubtitleTiming,
             onOpenSubtitleSync: onOpenSubtitleSync,
             onRetryPlayback: onRetryPlayback,
+            onTryNextSource: onTryNextSource,
             isZoomedToFill: isZoomedToFill,
             onZoomChanged: onZoomChanged,
             onWillDismiss: onWillDismiss,
@@ -3630,6 +3637,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
         private let playbackErrorView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
         private let playbackErrorLabel = UILabel()
         private let retryPlaybackButton = UIButton(type: .system)
+        private let tryNextSourceButton = UIButton(type: .system)
         private let subtitleTimingControl = UIStackView()
         private let subtitleTimingLabel = UILabel()
         private let decreaseSubtitleTimingButton = UIButton(type: .system)
@@ -3646,6 +3654,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
         private let onAdjustSubtitleTiming: (Double) -> Void
         private let onOpenSubtitleSync: () -> Void
         private let onRetryPlayback: () -> Void
+        private let onTryNextSource: () -> Void
         private let onWillDismiss: () -> Void
         private var subtitleTimingAvailable = false
         private var lastPlaybackErrorMessage: String?
@@ -3692,6 +3701,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onAdjustSubtitleTiming: @escaping (Double) -> Void,
             onOpenSubtitleSync: @escaping () -> Void,
             onRetryPlayback: @escaping () -> Void,
+            onTryNextSource: @escaping () -> Void,
             isZoomedToFill: Bool,
             onZoomChanged: @escaping (Bool) -> Void,
             onWillDismiss: @escaping () -> Void,
@@ -3703,6 +3713,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             self.onAdjustSubtitleTiming = onAdjustSubtitleTiming
             self.onOpenSubtitleSync = onOpenSubtitleSync
             self.onRetryPlayback = onRetryPlayback
+            self.onTryNextSource = onTryNextSource
             prefersZoomedToFill = isZoomedToFill
             self.onZoomChanged = onZoomChanged
             self.onWillDismiss = onWillDismiss
@@ -3781,9 +3792,9 @@ struct NativePlayerController: UIViewControllerRepresentable {
                 playbackErrorView.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
                 playbackErrorView.widthAnchor.constraint(lessThanOrEqualTo: overlay.safeAreaLayoutGuide.widthAnchor, constant: -40),
                 settingsButton.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -14),
-                settingsButton.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
-                settingsButton.widthAnchor.constraint(equalToConstant: 44),
-                settingsButton.heightAnchor.constraint(equalToConstant: 44),
+                settingsButton.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 10),
+                settingsButton.widthAnchor.constraint(equalToConstant: 40),
+                settingsButton.heightAnchor.constraint(equalToConstant: 40),
                 subtitleTimingControl.trailingAnchor.constraint(equalTo: settingsButton.trailingAnchor),
                 subtitleTimingControl.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 10),
                 subtitleTimingControl.widthAnchor.constraint(equalToConstant: 156),
@@ -3895,10 +3906,19 @@ struct NativePlayerController: UIViewControllerRepresentable {
             retryPlaybackButton.accessibilityHint = "Reloads the stream and resumes from your current position"
             retryPlaybackButton.addTarget(self, action: #selector(retryPlayback), for: .touchUpInside)
 
-            let stack = UIStackView(arrangedSubviews: [playbackErrorLabel, retryPlaybackButton])
+            var nextConfiguration = UIButton.Configuration.bordered()
+            nextConfiguration.title = "Try next source"
+            nextConfiguration.image = UIImage(systemName: "rectangle.stack")
+            nextConfiguration.imagePadding = 8
+            nextConfiguration.baseForegroundColor = .white
+            tryNextSourceButton.configuration = nextConfiguration
+            tryNextSourceButton.accessibilityHint = "Switches to another available source for this title"
+            tryNextSourceButton.addTarget(self, action: #selector(tryNextSource), for: .touchUpInside)
+
+            let stack = UIStackView(arrangedSubviews: [playbackErrorLabel, retryPlaybackButton, tryNextSourceButton])
             stack.axis = .vertical
             stack.alignment = .center
-            stack.spacing = 14
+            stack.spacing = 12
             stack.translatesAutoresizingMaskIntoConstraints = false
             playbackErrorView.contentView.addSubview(stack)
             NSLayoutConstraint.activate([
@@ -3915,13 +3935,19 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onRetryPlayback()
         }
 
+        @objc private func tryNextSource() {
+            playbackErrorView.isHidden = true
+            bufferingIndicator.startAnimating()
+            onTryNextSource()
+        }
+
         func updateSubtitleTiming(offset: Double, isAvailable: Bool) {
             let becameAvailable = !subtitleTimingAvailable && isAvailable
             let availabilityChanged = subtitleTimingAvailable != isAvailable
             subtitleTimingAvailable = isAvailable
             subtitleTimingLabel.text = Self.subtitleTimingText(offset)
             subtitleTimingLabel.accessibilityValue = Self.subtitleTimingAccessibilityValue(offset)
-            subtitleTimingControl.isHidden = true
+            subtitleTimingControl.isHidden = !isAvailable
             if availabilityChanged { rebuildSettingsMenu() }
             if becameAvailable { showSettingsButton() }
         }
@@ -4038,15 +4064,17 @@ struct NativePlayerController: UIViewControllerRepresentable {
 
             var configuration = UIButton.Configuration.gray()
             configuration.cornerStyle = .capsule
-            configuration.image = UIImage(systemName: "slider.horizontal.3")
+            configuration.image = UIImage(systemName: "ellipsis.circle.fill")
             configuration.baseForegroundColor = .white
+            configuration.background.backgroundColor = UIColor.black.withAlphaComponent(0.45)
             settingsButton.configuration = configuration
 
-            settingsButton.accessibilityLabel = "Source & Quality"
+            settingsButton.accessibilityLabel = "Playback settings"
+            let languageName = AppSetupStore.activePlaybackLanguageGroup.title
             let accessibilitySource: String
 
             if automaticSource {
-                accessibilitySource = "Automatic"
+                accessibilitySource = "Automatic · \(languageName)"
             } else if let selectedSourceID,
                       let stream = streams.first(
                         where: { $0.id == selectedSourceID }
@@ -4054,7 +4082,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
                 accessibilitySource =
                     stream.candidate.providerName
             } else {
-                accessibilitySource = "Automatic"
+                accessibilitySource = "Automatic · \(languageName)"
             }
 
             settingsButton.accessibilityValue =
@@ -4076,9 +4104,9 @@ struct NativePlayerController: UIViewControllerRepresentable {
 
                 if automaticSource {
                     automaticSubtitle =
-                        "Best available • Playing: \(activeSourceName) • \(activeQualityText)"
+                        "\(languageName) · Playing: \(activeSourceName) · \(activeQualityText)"
                 } else {
-                    automaticSubtitle = "Choose the best available source automatically"
+                    automaticSubtitle = "Best \(languageName.lowercased()) source automatically"
                 }
 
                 var sources: [UIMenuElement] = [
@@ -4199,13 +4227,44 @@ struct NativePlayerController: UIViewControllerRepresentable {
             }
 
             if subtitleTimingAvailable {
-                sections.append(UIAction(
-                    title: "Subtitle Sync Studio",
-                    image: UIImage(systemName: "captions.bubble")
-                ) { [weak self] _ in
-                    self?.onOpenSubtitleSync()
-                })
+                var subtitleActions: [UIMenuElement] = [
+                    UIAction(
+                        title: "Subtitle Sync Studio",
+                        subtitle: "Fine-tune timing for this title",
+                        image: UIImage(systemName: "captions.bubble")
+                    ) { [weak self] _ in
+                        self?.onOpenSubtitleSync()
+                    },
+                    UIAction(
+                        title: "Nudge earlier (−0.1s)",
+                        image: UIImage(systemName: "minus.circle")
+                    ) { [weak self] _ in
+                        self?.onAdjustSubtitleTiming(-0.1)
+                    },
+                    UIAction(
+                        title: "Nudge later (+0.1s)",
+                        image: UIImage(systemName: "plus.circle")
+                    ) { [weak self] _ in
+                        self?.onAdjustSubtitleTiming(0.1)
+                    },
+                ]
+                sections.append(
+                    UIMenu(
+                        title: "Subtitles",
+                        image: UIImage(systemName: "captions.bubble.fill"),
+                        children: subtitleActions
+                    )
+                )
             }
+
+            sections.append(
+                UIAction(
+                    title: "Turn captions on/off",
+                    subtitle: "Use the player’s CC button for tracks",
+                    image: UIImage(systemName: "captions.bubble"),
+                    attributes: [.disabled]
+                ) { _ in }
+            )
 
             settingsButton.menu = UIMenu(title: "Playback Settings", children: sections)
         }

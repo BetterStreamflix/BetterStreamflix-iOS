@@ -25,6 +25,7 @@ struct FirstLaunchSetupView: View {
     @AppStorage("player.subtitleLanguage.primary") private var primarySubtitleLanguage = "en"
     @AppStorage("player.audioLanguage") private var audioLanguage = "en"
     @AppStorage("player.animeAudioLanguage") private var animeAudioLanguage = "en"
+    @AppStorage("player.subtitlesEnabledByDefault") private var subtitlesEnabledByDefault = true
     @State private var providerDomainDraft = ""
     @State private var providerDomainError: String?
     @State private var playbackToggles: [PlaybackSourcePreferenceID: Bool] = [:]
@@ -154,6 +155,10 @@ struct FirstLaunchSetupView: View {
                             Text(option.name).tag(option.code)
                         }
                     }
+                    Toggle("Show subtitles by default", isOn: $subtitlesEnabledByDefault)
+                    Text("You can turn captions on or off anytime with the player’s CC button. Enable SubDL, OpenSubtitles, and other catalogs later in Settings → Subtitle Sources.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Picker("Anime audio", selection: $animeAudioLanguage) {
                         Text("English").tag("en")
                         Text("Japanese").tag("ja")

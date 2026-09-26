@@ -14,6 +14,7 @@
 		AB22DD5167030B6ACCB81166 /* InternationalPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */; };
 		509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */; };
 		F5F167C4365C4BF785264ADC /* OpenSubtitlesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */; };
+		80E619383D274B2BAB5D5E66 /* SubtitleProviderPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45087DD9B1B4213932C0503 /* SubtitleProviderPreferences.swift */; };
 		14DE0984B751C5DC3FEB1C70 /* PolishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */; };
 		3B0F7F0842BB420130BA8E36 /* ProviderCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */; };
 		4946995FDDA637021C797408 /* SpanishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */; };
@@ -92,6 +93,7 @@
 		6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InternationalPlaybackProviders.swift; sourceTree = "<group>"; };
 		2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItalianPlaybackProviders.swift; sourceTree = "<group>"; };
 		01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSubtitlesProvider.swift; sourceTree = "<group>"; };
+		D45087DD9B1B4213932C0503 /* SubtitleProviderPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleProviderPreferences.swift; sourceTree = "<group>"; };
 		B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishPlaybackProviders.swift; sourceTree = "<group>"; };
 		BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderCatalog.swift; sourceTree = "<group>"; };
 		9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpanishPlaybackProviders.swift; sourceTree = "<group>"; };
@@ -194,6 +196,7 @@
 				6154F3D82A66EE49D8CDA564 /* InternationalPlaybackProviders.swift */,
 				2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */,
 				01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */,
+				D45087DD9B1B4213932C0503 /* SubtitleProviderPreferences.swift */,
 				B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */,
 				BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */,
 				9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */,
@@ -377,6 +380,7 @@
 				AB22DD5167030B6ACCB81166 /* InternationalPlaybackProviders.swift in Sources */,
 				509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */,
 				F5F167C4365C4BF785264ADC /* OpenSubtitlesProvider.swift in Sources */,
+				80E619383D274B2BAB5D5E66 /* SubtitleProviderPreferences.swift in Sources */,
 				14DE0984B751C5DC3FEB1C70 /* PolishPlaybackProviders.swift in Sources */,
 				3B0F7F0842BB420130BA8E36 /* ProviderCatalog.swift in Sources */,
 				4946995FDDA637021C797408 /* SpanishPlaybackProviders.swift in Sources */,
@@ -469,7 +473,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -662,7 +666,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

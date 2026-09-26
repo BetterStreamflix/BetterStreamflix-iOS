@@ -951,13 +951,12 @@ struct PlayerScreen: View {
     private var subtitleLoadingModeRawValue = SubtitleLoadingMode.fast.rawValue
     @AppStorage("subtitle.provider.subdl.enabled")
     private var subDLSubtitlesEnabled = true
-
+    @AppStorage("subtitle.provider.opensubtitles.enabled")
+    private var openSubtitlesEnabled = true
     @AppStorage("subtitle.provider.wizdom.enabled")
     private var wizdomSubtitlesEnabled = true
-
     @AppStorage("subtitle.provider.ktuvit.enabled")
     private var ktuvitSubtitlesEnabled = true
-
     @AppStorage("subtitle.provider.externalStreams.enabled")
     private var externalStreamSubtitlesEnabled = true
     @AppStorage("player.subtitleSync.autoSelectLatest") private var autoSelectLatestSubtitleSync = true
@@ -1191,6 +1190,17 @@ struct PlayerScreen: View {
                     }
                 } else { session.retryPlayback() }
             },
+            onTryNextSource: {
+                model.resetRecovery()
+                Task {
+                    let recovered = await model.recover { stream in
+                        await session.switchSource(stream, externalSubtitles: model.allSubtitles)
+                    }
+                    if !recovered {
+                        session.retryPlayback()
+                    }
+                }
+            },
             onZoomChanged: {
                 library.updatePlayerZoomedToFill($0, for: model.request)
             },
@@ -1207,7 +1217,7 @@ struct PlayerScreen: View {
                 sourceSwitchOverlay(
                     sourceSwitchStatus
                 )
-                .padding(.top, 54)
+                .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
                 .transition(
                     .move(edge: .top)
                         .combined(
@@ -1225,7 +1235,7 @@ struct PlayerScreen: View {
                     cancelAccessibilityLabel: "Cancel next episode loading",
                     onCancel: cancelPendingEpisodeLoad
                 )
-                .padding(.top, 54)
+                .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
                 .transition(
                     .move(edge: .top)
                         .combined(with: .opacity)
@@ -1235,9 +1245,7 @@ struct PlayerScreen: View {
                         || session.playbackState == .preparing
                         || session.playbackState == .recovering {
                 playbackStatusOverlay(
-                    title: session.playbackState == .recovering
-                        ? "Reconnecting…"
-                        : "Loading video…",
+                    title: reconnectBannerTitle,
                     subtitle: playbackLoadingSubtitle(
                         for: model.request
                     ),
@@ -1245,7 +1253,7 @@ struct PlayerScreen: View {
                     cancelAccessibilityLabel: "Close player",
                     onCancel: closePlayerDuringLoading
                 )
-                .padding(.top, 54)
+                .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
                 .transition(
                     .move(edge: .top)
                         .combined(with: .opacity)
@@ -1969,30 +1977,26 @@ struct PlayerScreen: View {
     }
 
     private var enabledSubtitleProviderIDs: Set<String> {
-        var providers: Set<String> = []
-
-        if subDLSubtitlesEnabled {
-            providers.insert("subdl")
-        }
-
-        if wizdomSubtitlesEnabled {
-            providers.insert("wizdom")
-        }
-
-        if ktuvitSubtitlesEnabled {
-            providers.insert("ktuvit")
-        }
-
+        var providers = Set<String>()
+        if subDLSubtitlesEnabled { providers.insert("subdl") }
+        if openSubtitlesEnabled { providers.insert("opensubtitles") }
+        if wizdomSubtitlesEnabled { providers.insert("wizdom") }
+        if ktuvitSubtitlesEnabled { providers.insert("ktuvit") }
         if externalStreamSubtitlesEnabled {
-            providers.insert(
-                "external-stream-subtitles"
-            )
+            providers.insert("external-stream-subtitles")
         }
-
         return providers
     }
 
-    /// Discovery ranks by the active playback language group, not anime-only AppStorage.
+    private var reconnectBannerTitle: String {
+        if session.playbackState == .recovering {
+            let attempt = max(1, session.recoveryAttemptCount)
+            let maxAttempts = PlaybackRecoveryPolicy.maximumSourceRefreshes
+            return "Reconnecting · attempt \(attempt) of \(maxAttempts)"
+        }
+        return "Loading video…"
+    }
+
     private var discoveryAudioLanguage: String {
         AppSetupStore.activePlaybackLanguageGroup.primaryAudioCode
     }
