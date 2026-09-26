@@ -1,5 +1,4 @@
 import Foundation
-import AVFoundation
 
 enum PlaybackStartupTrace {
     static func now() -> Int {
@@ -170,8 +169,8 @@ final class PlaybackDiscovery {
     private let backgroundDeadline: Duration
     private let prepare: @Sendable (PlaybackCandidate) async throws -> PlayableStream
 
-    init(settleDelay: Duration = .milliseconds(350), initialDeadline: Duration = .seconds(8),
-         backgroundDeadline: Duration = .seconds(45),
+    init(settleDelay: Duration = .milliseconds(0), initialDeadline: Duration = .seconds(6),
+         backgroundDeadline: Duration = .seconds(35),
          prepare: @escaping @Sendable (PlaybackCandidate) async throws -> PlayableStream = { try await PlaybackDiscovery.prepare($0) }) {
         self.settleDelay = settleDelay
         self.initialDeadline = initialDeadline
@@ -183,7 +182,7 @@ final class PlaybackDiscovery {
         try await withThrowingTaskGroup(of: PlayableStream.self) { group in
             group.addTask { try await prepareStream(candidate) }
             // Fail fast so parallel discovery can advance to the next source.
-            group.addTask { try await Task.sleep(for: .seconds(6)); throw AppError.noStream }
+            group.addTask { try await Task.sleep(for: .seconds(3.5)); throw AppError.noStream }
             defer { group.cancelAll() }
             guard let result = try await group.next() else { throw AppError.noStream }
             return result
@@ -204,41 +203,13 @@ final class PlaybackDiscovery {
         )
 
         try Task.checkCancellation()
-        let asset = AVURLAsset(url: source.url, options: ["AVURLAssetHTTPHeaderFieldsKey": source.headers])
-        let isPlayable = try await withTaskCancellationHandler {
-            try await asset.load(.isPlayable)
-        } onCancel: { asset.cancelLoading() }
-        guard isPlayable else { throw AppError.noStream }
-        PlaybackStartupTrace.mark(
-            "candidate PLAYABLE id=\(candidate.id) duration=\(PlaybackStartupTrace.duration(since: perfStart))ms"
-        )
-        // Keep qualities off the critical path — the player session refreshes
-        // them after playback starts. A short race still captures fast playlists.
-        let qualities: [StreamQuality] = await withTaskGroup(of: [StreamQuality].self) { group in
-            group.addTask { await HLSPlaylistInspector().availableQualities(for: source) }
-            group.addTask {
-                try? await Task.sleep(for: .milliseconds(500))
-                return []
-            }
-            let first = await group.next() ?? []
-            group.cancelAll()
-            return first
-        }
-        PlaybackStartupTrace.mark(
-            "candidate QUALITIES id=\(candidate.id) count=\(qualities.count) duration=\(PlaybackStartupTrace.duration(since: perfStart))ms"
-        )
-        let nativeSubtitles = try? await asset.loadMediaSelectionGroup(for: .legible)
-        let subtitleKind: StreamSubtitleKind
-        if candidate.subtitleKind == .unknown {
-            subtitleKind = !source.subtitles.isEmpty || !(nativeSubtitles?.options.isEmpty ?? true) ? .selectable :
-                candidate.preference.audioLanguage == "ja" ? .embeddedEnglish : .selectable
-        } else { subtitleKind = candidate.subtitleKind }
-        let verified = PlaybackCandidate(id: candidate.id, preference: candidate.preference, providerName: candidate.providerName,
-            subtitleKind: subtitleKind, displayMetadata: candidate.displayMetadata, resolve: candidate.resolve)
+        // Android hands the master URL to Exo without isPlayable / HLS quality
+        // probes. Keep iOS on the same critical path — AVPlayer + source failover
+        // handle dead links after play starts.
         PlaybackStartupTrace.mark(
             "candidate DONE id=\(candidate.id) total=\(PlaybackStartupTrace.duration(since: perfStart))ms"
         )
-        return PlayableStream(candidate: verified, source: source, qualities: qualities)
+        return PlayableStream(candidate: candidate, source: source, qualities: [])
     }
 
     func start(context: PlaybackLookupContext, providers: [any PlaybackProvider], policy: StreamSelectionPolicy) async throws -> PlayableStream {
@@ -279,7 +250,9 @@ final class PlaybackDiscovery {
                                         )
                                     }
                                     await withTaskGroup(of: PlayableStream?.self) { servers in
-                                        for candidate in candidates.prefix(12) {
+                                        // Race the first few hosters hard — first
+                                        // playable wins; the rest keep filling the menu.
+                                        for candidate in candidates.prefix(8) {
                                             servers.addTask {
                                                 do {
                                                     return try await prepare(candidate)
@@ -334,7 +307,21 @@ final class PlaybackDiscovery {
         )
         streams.append(stream)
         onUpdate?(streams)
-        guard initial != nil, settleTask == nil else { return }
+        guard initial != nil else { return }
+
+        // First usable source starts playback immediately — do not idle waiting
+        // for sibling providers (Android plays preferred||first as soon as the
+        // chosen server list is ready; iOS already races providers in parallel).
+        if settleDelay <= .zero {
+            deliverInitial()
+            return
+        }
+        if let preference = policy.preference,
+           stream.candidate.preference == preference {
+            deliverInitial()
+            return
+        }
+        guard settleTask == nil else { return }
         settleTask = Task { [weak self, settleDelay] in
             do { try await Task.sleep(for: settleDelay) } catch { return }
             guard self?.generation == operation else { return }

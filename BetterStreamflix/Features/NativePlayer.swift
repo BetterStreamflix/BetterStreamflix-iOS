@@ -602,31 +602,25 @@ final class PlayerSession: ObservableObject {
                 generation: playbackGeneration
             )
         }
-        let qualityPerfStart =
-            PlaybackStartupTrace.now()
-        // Cap playlist inspection so a slow master manifest cannot idle the
-        // preparing state before the first frame.
-        let qualities: [StreamQuality] = await withTaskGroup(of: [StreamQuality].self) { group in
-            group.addTask { await self.playlistInspector.availableQualities(for: preparedSource) }
-            group.addTask {
-                try? await Task.sleep(for: .milliseconds(700))
-                return []
-            }
-            let first = await group.next() ?? []
-            group.cancelAll()
-            return first
-        }
-        PlaybackStartupTrace.mark(
-            "PlayerSession qualities READY duration=\(PlaybackStartupTrace.duration(since: qualityPerfStart))ms"
-        )
-        guard !Task.isCancelled else { return }
-        availableQualities = qualities
+        // Qualities are discovered after play starts — matching Android, which
+        // never probes the HLS master before handing the URL to ExoPlayer.
         if !qualityPreferenceInitialized {
             preferredQualityHeight = defaultQualityHeight > 0 ? defaultQualityHeight : nil
             qualityPreferenceInitialized = true
         }
         selectedQuality = preferredQualityHeight.flatMap {
-            StreamQuality.closest(to: $0, in: qualities)
+            StreamQuality.closest(to: $0, in: availableQualities)
+        }
+        let qualityProbeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let qualities = await self.playlistInspector.availableQualities(for: preparedSource)
+            guard self.playbackGeneration == playbackGeneration, !Task.isCancelled else { return }
+            self.availableQualities = qualities
+            if self.selectedQuality == nil {
+                self.selectedQuality = self.preferredQualityHeight.flatMap {
+                    StreamQuality.closest(to: $0, in: qualities)
+                }
+            }
         }
         let subtitlePerfStart =
             PlaybackStartupTrace.now()
@@ -645,7 +639,10 @@ final class PlayerSession: ObservableObject {
         PlaybackStartupTrace.mark(
             "PlayerSession subtitle injection DONE duration=\(PlaybackStartupTrace.duration(since: subtitlePerfStart))ms"
         )
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else {
+            qualityProbeTask.cancel()
+            return
+        }
         automaticPeakBitRate = source.preferredPeakBitRate
         currentPlaybackSource = preparedSource
         currentExternalSubtitles = externalSubtitles

@@ -9,8 +9,10 @@ struct HosterHTTP: Sendable {
 
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 15
-        configuration.timeoutIntervalForResource = 30
+        // Fail over faster than Android OkHttp's 30s defaults — dead hosters
+        // should not stall first-play discovery.
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 18
         configuration.httpShouldSetCookies = true
         configuration.httpCookieAcceptPolicy = .always
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -45,9 +47,17 @@ struct HosterHTTP: Sendable {
     /// The page body without failing on a soft error status; hoster wrappers often
     /// serve their mirror list alongside a 403.
     func page(_ url: URL, referer: URL? = nil, headers: [String: String] = [:]) async throws -> String {
+        let cacheKey = url.absoluteString
+        if headers.isEmpty, let cached = await GermanHTMLCache.shared.html(for: cacheKey) {
+            return cached
+        }
         let response = try await get(url, referer: referer, headers: headers)
         guard !response.data.isEmpty else { throw AppError.noStream }
-        return response.text
+        let text = response.text
+        if headers.isEmpty, (200...499).contains(response.statusCode), text.count > 64 {
+            await GermanHTMLCache.shared.store(text, for: cacheKey)
+        }
+        return text
     }
 
     func json(_ url: URL, referer: URL? = nil, headers: [String: String] = [:]) async throws -> Any {
@@ -329,14 +339,29 @@ enum MeinecloudEmbedHelper {
     }
 
     static func expand(_ url: URL, referer: URL? = nil) async -> [HosterMirror] {
-        for candidate in alternateWrapperURLs(for: url) {
-            guard let html = try? await HosterHTTP.shared.page(candidate, referer: referer ?? candidate) else {
-                continue
-            }
-            let found = mirrors(in: html, base: candidate)
+        // Try the primary host first; only fan out to alternate wrapper hosts
+        // when that page is empty (cuts redundant fetches Android avoids on hit).
+        let alternates = alternateWrapperURLs(for: url)
+        if let primary = alternates.first,
+           let html = try? await HosterHTTP.shared.page(primary, referer: referer ?? primary) {
+            let found = mirrors(in: html, base: primary)
             if !found.isEmpty { return found }
         }
-        return []
+        return await withTaskGroup(of: [HosterMirror].self) { group in
+            for candidate in alternates.dropFirst().prefix(3) {
+                group.addTask {
+                    guard let html = try? await HosterHTTP.shared.page(candidate, referer: referer ?? candidate) else {
+                        return []
+                    }
+                    return mirrors(in: html, base: candidate)
+                }
+            }
+            for await found in group where !found.isEmpty {
+                group.cancelAll()
+                return found
+            }
+            return []
+        }
     }
 
     /// meinecloud / devideosrc hop across mirror hosts for the same movie path.
@@ -435,14 +460,28 @@ enum HosterExtractor {
     }
 
     static func resolveFirst(_ mirrors: [HosterMirror], referer: URL?) async throws -> PlaybackSource {
-        var lastError: (any Error)?
-        for mirror in mirrors {
-            try Task.checkCancellation()
-            do { return try await resolve(mirror.url, referer: referer, serverName: mirror.name) }
-            catch where error.isCancellation { throw error }
-            catch { lastError = error }
+        // Race mirrors — first healthy hoster wins (serial tries were a major
+        // meinecloud / Kinoger stall vs Android's faster first-play path).
+        try await withThrowingTaskGroup(of: PlaybackSource?.self) { group in
+            for mirror in mirrors.prefix(4) {
+                group.addTask {
+                    do {
+                        return try await resolve(mirror.url, referer: referer, serverName: mirror.name)
+                    } catch where error.isCancellation {
+                        throw error
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+            for await result in group {
+                if let result {
+                    group.cancelAll()
+                    return result
+                }
+            }
+            throw AppError.noStream
         }
-        throw lastError ?? AppError.noStream
     }
 
     static func headers(referer: URL?, origin: URL? = nil) -> [String: String] {
@@ -838,5 +877,36 @@ enum HosterExtractor {
             if let value = AnimeHTML.captures(pattern, in: decoded).first?[1], !value.isEmpty { return value }
         }
         return nil
+    }
+}
+
+/// Short-lived HTML cache for German catalogue / wrapper pages so SerienStream,
+/// Kinoger and meinecloud do not re-fetch the same search or embed on retries.
+actor GermanHTMLCache {
+    static let shared = GermanHTMLCache()
+
+    private struct Entry {
+        let html: String
+        let expiry: Date
+    }
+
+    private var entries: [String: Entry] = [:]
+    private let ttl: TimeInterval = 120
+
+    func html(for key: String) -> String? {
+        guard let entry = entries[key] else { return nil }
+        guard entry.expiry > Date() else {
+            entries[key] = nil
+            return nil
+        }
+        return entry.html
+    }
+
+    func store(_ html: String, for key: String) {
+        entries[key] = Entry(html: html, expiry: Date().addingTimeInterval(ttl))
+        if entries.count > 64 {
+            let now = Date()
+            entries = entries.filter { $0.value.expiry > now }
+        }
     }
 }

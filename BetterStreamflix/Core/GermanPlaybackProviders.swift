@@ -237,28 +237,48 @@ enum GermanScrape {
     /// Meinecloud wrappers name the real hoster, so expanding them up front gives
     /// the picker "Voe" and "Mixdrop" rows instead of a single "Meinecloud" row.
     static func expandingWrappers(_ hosters: [GermanHoster], limit: Int = 2) async -> [GermanHoster] {
-        var result: [GermanHoster] = []
+        var passthrough: [GermanHoster] = []
+        var toExpand: [(index: Int, hoster: GermanHoster)] = []
         var expanded = 0
-        for hoster in hosters {
-            guard MeinecloudEmbedHelper.isEmbedWrapper(hoster.url), expanded < limit else {
-                result.append(hoster)
-                continue
+        for (index, hoster) in hosters.enumerated() {
+            if MeinecloudEmbedHelper.isEmbedWrapper(hoster.url), expanded < limit {
+                toExpand.append((index, hoster))
+                expanded += 1
+            } else {
+                passthrough.append(hoster)
             }
-            expanded += 1
-            let mirrors = await MeinecloudEmbedHelper.expand(hoster.url, referer: hoster.referer)
-                .filter { !MeinecloudEmbedHelper.isEmbedWrapper($0.url) }
-            guard !mirrors.isEmpty else {
-                result.append(hoster)
-                continue
+        }
+        guard !toExpand.isEmpty else { return hosters }
+
+        var expansions: [Int: [GermanHoster]] = [:]
+        await withTaskGroup(of: (Int, [GermanHoster]).self) { group in
+            for item in toExpand {
+                group.addTask {
+                    let mirrors = await MeinecloudEmbedHelper.expand(item.hoster.url, referer: item.hoster.referer)
+                        .filter { !MeinecloudEmbedHelper.isEmbedWrapper($0.url) }
+                    let mapped = mirrors.isEmpty ? [item.hoster] : mirrors.map { mirror in
+                        GermanHoster(
+                            name: MeinecloudEmbedHelper.hosterDisplayName(for: mirror.url),
+                            url: mirror.url,
+                            referer: item.hoster.url,
+                            audioLanguage: item.hoster.audioLanguage
+                        )
+                    }
+                    return (item.index, mapped)
+                }
             }
-            result.append(contentsOf: mirrors.map { mirror in
-                GermanHoster(
-                    name: MeinecloudEmbedHelper.hosterDisplayName(for: mirror.url),
-                    url: mirror.url,
-                    referer: hoster.url,
-                    audioLanguage: hoster.audioLanguage
-                )
-            })
+            for await (index, mapped) in group {
+                expansions[index] = mapped
+            }
+        }
+
+        var result: [GermanHoster] = []
+        for (index, hoster) in hosters.enumerated() {
+            if let mapped = expansions[index] {
+                result.append(contentsOf: mapped)
+            } else {
+                result.append(hoster)
+            }
         }
         return result
     }
@@ -820,8 +840,9 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
                 referer: page
             )
         }
-        // Expand more wrappers than the default — Kinoger often stacks meinecloud → hoster.
-        hosters = await GermanScrape.expandingWrappers(hosters, limit: 8)
+        // Expand a couple of wrappers in parallel — full expand-of-all was serial
+        // and slower than Android's getServers → play first path.
+        hosters = await GermanScrape.expandingWrappers(hosters, limit: 3)
         if !hosters.isEmpty { return hosters }
         return await imdbMeinecloudFallback(for: context, referer: page)
     }
@@ -1137,7 +1158,7 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
 struct SerienStreamPlaybackProvider: GermanPlaybackProvider {
     var id: String { "serienstream" }
     var displayName: String { "SerienStream" }
-    var baseURL: URL { Self.origins[0] }
+    var baseURL: URL { preferredOrigins[0] }
     var supportsMovies: Bool { false }
 
     private static let origins = [
@@ -1145,10 +1166,22 @@ struct SerienStreamPlaybackProvider: GermanPlaybackProvider {
         URL(string: "https://serienstream.to/")!,
         URL(string: "https://serienstream.cx/")!,
     ]
+    private static let workingOriginKey = "serienstream.workingOrigin"
+
+    /// Prefer the last working domain (Android persists this) before trying the rest.
+    private var preferredOrigins: [URL] {
+        var ordered = Self.origins
+        if let raw = UserDefaults.standard.string(forKey: Self.workingOriginKey),
+           let saved = URL(string: raw),
+           let index = ordered.firstIndex(where: { $0.host == saved.host && $0.scheme == saved.scheme }) {
+            ordered.move(fromOffsets: IndexSet(integer: index), toOffset: 0)
+        }
+        return ordered
+    }
 
     func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
         guard let episode = context.request.episode else { return [] }
-        for origin in Self.origins {
+        for origin in preferredOrigins {
             try Task.checkCancellation()
             guard let slug = try? await findSlug(for: context, origin: origin) else { continue }
             guard let page = GermanScrape.url(
@@ -1156,7 +1189,10 @@ struct SerienStreamPlaybackProvider: GermanPlaybackProvider {
                 "serie/\(GermanScrape.pathEncoded(slug))/staffel-\(episode.seasonNumber)/episode-\(episode.number)"
             ), let html = try? await GermanScrape.client.page(page, referer: origin) else { continue }
             let hosters = Self.linkBoxes(in: html, page: page, origin: origin)
-            if !hosters.isEmpty { return hosters }
+            if !hosters.isEmpty {
+                UserDefaults.standard.set(origin.absoluteString, forKey: Self.workingOriginKey)
+                return hosters
+            }
         }
         return []
     }
