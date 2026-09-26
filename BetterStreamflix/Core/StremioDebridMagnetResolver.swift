@@ -559,6 +559,7 @@ enum StremioProfileExport {
         var addonManifestURLs: [String]?
     }
 
+    @MainActor
     static func exportJSON(
         debrid: StremioDebridStore = .shared,
         store: StremioAddonStore = .shared
