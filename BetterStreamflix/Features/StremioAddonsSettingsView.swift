@@ -71,7 +71,7 @@ struct StremioAddonsSettingsView: View {
                 banner = "Ready to install from link"
             }
         }
-        .sheet(item: Binding(
+        .fullScreenCover(item: Binding(
             get: { configureURL.map(IdentifiableURL.init) },
             set: { configureURL = $0?.url }
         )) { item in
@@ -611,6 +611,12 @@ struct StremioAddonsSettingsView: View {
                         .tint(environment.theme.accent)
                         .font(.caption.weight(.semibold))
                         .disabled(!debrid.hasAnyToken || (reachability == .unreachable && curated.isPopularOptional))
+                        Button("Configure") {
+                            configureURL = StremioDebridURLBuilder.configurePageURL(from: curated.manifestURL)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(environment.theme.accent)
+                        .font(.caption.weight(.semibold))
                     }
                     Button(emphasize ? "Install" : (needsDebrid ? "Bare" : "Add")) {
                         Task { await installCurated(curated) }
@@ -788,8 +794,10 @@ struct StremioAddonsSettingsView: View {
             banner = "Installed \(curated.name) with \(debrid.preferredProfile?.service.shortTitle ?? "Debrid")"
             DesignTokens.Haptics.primaryAction()
         } catch {
+            // Fall back to in-app Configure when one-tap URL isn’t available (MediaFusion, etc.).
+            configureURL = StremioDebridURLBuilder.configurePageURL(from: curated.manifestURL)
             banner = error.localizedDescription.nilIfEmpty
-                ?? "Couldn’t install \(curated.name) with Debrid"
+                ?? "Open Configure to finish \(curated.name)"
         }
     }
 
@@ -922,7 +930,7 @@ enum StremioInstallDeepLink {
     }
 }
 
-private struct IdentifiableURL: Identifiable {
+struct IdentifiableURL: Identifiable {
     let url: URL
     var id: String { url.absoluteString }
 }

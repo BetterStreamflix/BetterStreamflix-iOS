@@ -223,6 +223,80 @@ struct StremioAddonProviderTests {
         #expect(!StremioDebridURLBuilder.looksConfigured(base))
     }
 
+    @Test("Configure page strips Debrid path segments back to origin")
+    func configurePageUsesBareOrigin() {
+        let configured = URL(string: "https://torrentio.strem.fun/realdebrid=TOKEN|cached=true/manifest.json")!
+        let page = StremioDebridURLBuilder.configurePageURL(from: configured)
+        #expect(page.absoluteString == "https://torrentio.strem.fun/configure")
+        #expect(InstalledStremioAddon(
+            id: "t",
+            manifestURL: configured,
+            baseURL: configured.deletingLastPathComponent(),
+            name: "Torrentio",
+            isEnabled: true,
+            sortOrder: 0,
+            supportsCatalog: false,
+            supportsMeta: false,
+            supportsStream: true,
+            supportsSubtitles: false,
+            catalogs: [],
+            health: .unknown,
+            isCurated: true,
+            isConfigurable: true,
+            requiresConfiguration: true
+        ).configurePageURL?.absoluteString == "https://torrentio.strem.fun/configure")
+    }
+
+    @Test("Comet opaque config segments count as configured")
+    func cometLooksConfigured() {
+        let b64 = String(repeating: "A", count: 40)
+        let configured = URL(string: "https://comet.elfhosted.com/\(b64)/manifest.json")!
+        #expect(StremioDebridURLBuilder.looksConfigured(configured))
+        let bare = StremioDebridURLBuilder.bareManifestURL(from: configured)
+        #expect(bare.absoluteString == "https://comet.elfhosted.com/manifest.json")
+    }
+
+    @Test("stremio:///https:// paste form parses to https host")
+    func stremioEmbeddedHTTPS() {
+        let parsed = StremioManifestURL.parse("stremio:///https://torrentio.strem.fun/realdebrid=T/manifest.json")
+        #expect(parsed?.host == "torrentio.strem.fun")
+        #expect(parsed?.path.contains("manifest.json") == true)
+        let configure = StremioManifestURL.parse("https://torrentio.strem.fun/configure")
+        #expect(configure?.lastPathComponent == "configure")
+        #expect(configure?.path.hasSuffix("/configure/manifest.json") != true)
+    }
+
+    @Test("MediaFusion one-tap Debrid returns nil so Configure is used")
+    func mediaFusionNeedsConfigure() {
+        let base = URL(string: "https://mediafusion.elfhosted.com/manifest.json")!
+        let url = StremioDebridURLBuilder.configuredManifestURL(
+            for: "mediafusion",
+            service: .realDebrid,
+            token: "TOKEN",
+            baseManifestURL: base
+        )
+        #expect(url == nil)
+    }
+
+    @Test("TorBox builder requires TorBox service token")
+    func torboxRequiresTorBoxToken() {
+        let base = URL(string: "https://stremio.torbox.app/manifest.json")!
+        let wrong = StremioDebridURLBuilder.configuredManifestURL(
+            for: "com.torbox.stremio",
+            service: .realDebrid,
+            token: "RDTOKEN",
+            baseManifestURL: base
+        )
+        #expect(wrong == nil)
+        let ok = StremioDebridURLBuilder.configuredManifestURL(
+            for: "com.torbox.stremio",
+            service: .torbox,
+            token: "TBKEY",
+            baseManifestURL: base
+        )
+        #expect(ok?.absoluteString == "https://stremio.torbox.app/TBKEY/manifest.json")
+    }
+
     @Test("Deep link install queues betterstreamflix and stremio URLs")
     func deepLinkInstall() {
         let stremio = URL(string: "stremio://v3-cinemeta.strem.io/manifest.json")!

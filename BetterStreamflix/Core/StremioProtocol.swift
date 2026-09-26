@@ -74,10 +74,11 @@ struct StremioManifest: Codable, Hashable, Sendable {
         return true
     }
 
-    /// Configuration page for configurable addons (Stremio convention: `{base}/configure`).
+    /// Configuration page for configurable addons (Stremio convention: `{origin}/configure`).
     func configurationURL(relativeTo baseURL: URL) -> URL? {
         guard isConfigurable || requiresConfiguration else { return nil }
-        return baseURL.appendingPathComponent("configure")
+        let syntheticManifest = baseURL.appendingPathComponent("manifest.json")
+        return StremioDebridURLBuilder.configurePageURL(from: syntheticManifest)
     }
 
     @available(*, deprecated, message: "Use configurationURL(relativeTo:)")
@@ -865,13 +866,24 @@ enum StremioManifestURL {
 
         // Extract the first URL-looking token from a pasted sentence.
         if let match = value.range(
-            of: #"(?i)(?:stremio|https?)://[^\s<>\"']+"#,
+            of: #"(?i)(?:stremio:/*|https?://)[^\s<>\"']+"#,
             options: .regularExpression
         ) {
             value = String(value[match])
         }
 
-        value = value.replacingOccurrences(of: "stremio://", with: "https://", options: [.caseInsensitive])
+        // Common share forms: stremio:///https://host/… and stremio:https://host/…
+        if let embedded = value.range(
+            of: #"(?i)stremio:/+https?://"#,
+            options: .regularExpression
+        ) {
+            value = String(value[embedded.upperBound...])
+        } else if value.lowercased().hasPrefix("stremio:https://")
+                    || value.lowercased().hasPrefix("stremio:http://") {
+            value = String(value.dropFirst("stremio:".count))
+        } else {
+            value = value.replacingOccurrences(of: "stremio://", with: "https://", options: [.caseInsensitive])
+        }
 
         // Classic installer form: stremio://addon.url/manifest.json already rewritten.
         if value.lowercased().hasPrefix("https://add/") {
@@ -888,9 +900,14 @@ enum StremioManifestURL {
         }
 
         guard var url = URL(string: value) else { return nil }
+        let last = url.lastPathComponent.lowercased()
+        // Never treat configure / UI routes as manifests.
+        if last == "configure" || url.path.lowercased().hasSuffix("/configure") {
+            return url
+        }
         if url.path.isEmpty || url.path == "/" {
             url = url.appendingPathComponent("manifest.json")
-        } else if url.lastPathComponent.lowercased() != "manifest.json",
+        } else if last != "manifest.json",
                   !url.path.lowercased().contains("/manifest.json") {
             if url.pathExtension.isEmpty {
                 url = url.appendingPathComponent("manifest.json")

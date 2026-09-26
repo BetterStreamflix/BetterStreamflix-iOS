@@ -541,7 +541,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.14;
+				MARKETING_VERSION = 0.1.15;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -734,7 +734,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.14;
+				MARKETING_VERSION = 0.1.15;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

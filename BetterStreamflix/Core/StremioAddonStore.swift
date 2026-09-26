@@ -90,9 +90,10 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
         requiresConfiguration && !StremioDebridURLBuilder.looksConfigured(manifestURL)
     }
 
+    /// Always the addon origin `/configure` — never nested under a Debrid config segment.
     var configurePageURL: URL? {
         guard isConfigurable || requiresConfiguration else { return nil }
-        return baseURL.appendingPathComponent("configure")
+        return StremioDebridURLBuilder.configurePageURL(from: manifestURL)
     }
 
     init(
@@ -588,7 +589,9 @@ final class StremioAddonStore: ObservableObject {
         debrid: StremioDebridStore = .shared
     ) async throws {
         guard let url = debrid.configuredManifestURL(for: curated) else {
-            throw AppError.decoding("Add a Debrid token under Stremio → Debrid first")
+            throw AppError.decoding(
+                "Open Configure for \(curated.name) — automatic Debrid URL isn’t available for this addon (or save a matching token: TorBox for TorBox, any for Torrentio/Comet)."
+            )
         }
         _ = try await install(from: url.absoluteString, curated: true)
     }
@@ -596,7 +599,7 @@ final class StremioAddonStore: ObservableObject {
     /// Rewrite installed Debrid stream addons to the preferred token/service (one-tap rebind).
     @discardableResult
     func rebindDebridProfiles(debrid: StremioDebridStore = .shared) async throws -> Int {
-        guard let profile = debrid.preferredProfile else {
+        guard debrid.hasAnyToken else {
             throw AppError.decoding("Save a Debrid token first")
         }
         var rebound = 0
@@ -610,6 +613,15 @@ final class StremioAddonStore: ObservableObject {
         }
         for addon in targets {
             let bare = StremioDebridURLBuilder.bareManifestURL(from: addon.manifestURL)
+            let host = (addon.manifestURL.host ?? "").lowercased()
+            let wantsTorBox = host.contains("torbox") || addon.id.lowercased().contains("torbox")
+            let profile: StremioDebridProfile?
+            if wantsTorBox {
+                profile = debrid.profiles.first(where: { $0.service == .torbox && $0.isConfigured })
+            } else {
+                profile = debrid.preferredProfile
+            }
+            guard let profile else { continue }
             guard let url = StremioDebridURLBuilder.configuredManifestURL(
                 for: addon.id,
                 service: profile.service,

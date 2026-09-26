@@ -78,7 +78,7 @@ struct StremioInstallPromptSheet: View {
             .navigationTitle("Install Stremio addon")
             .navigationBarTitleDisplayMode(.inline)
             .task { await loadPreview() }
-            .sheet(isPresented: $showConfigure) {
+            .fullScreenCover(isPresented: $showConfigure) {
                 if let configureURL {
                     StremioConfigureWebView(
                         startURL: configureURL,
@@ -134,7 +134,14 @@ struct StremioInstallPromptSheet: View {
             previewName = loaded.manifest.name
             previewDetail = loaded.manifest.description ?? loaded.manifest.id
             previewLogo = URL(string: loaded.manifest.logo ?? "")
-            configureURL = loaded.manifest.configurationURL(relativeTo: loaded.baseURL)
+            if loaded.manifest.isConfigurable || loaded.manifest.requiresConfiguration {
+                let manifest = url.path.lowercased().hasSuffix("manifest.json")
+                    ? url
+                    : url.appendingPathComponent("manifest.json")
+                configureURL = StremioDebridURLBuilder.configurePageURL(from: manifest)
+            } else {
+                configureURL = nil
+            }
         } catch {
             previewName = nil
             previewDetail = rawURL

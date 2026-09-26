@@ -10,6 +10,7 @@ struct StremioAddonStoreBrowserView: View {
     @State private var isLoadingRemote = false
     @State private var remoteError: String?
     @State private var searchDraft = ""
+    @State private var configureURL: URL?
 
     private var editorsPicks: [StremioCuratedAddon] {
         StremioCuratedCatalog.allPresets
@@ -85,6 +86,20 @@ struct StremioAddonStoreBrowserView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadRemote() }
         .refreshable { await loadRemote() }
+        .fullScreenCover(item: Binding(
+            get: { configureURL.map(IdentifiableURL.init) },
+            set: { configureURL = $0?.url }
+        )) { item in
+            StremioConfigureWebView(
+                startURL: item.url,
+                onInstalled: { addon in
+                    configureURL = nil
+                    banner = "Configured \(addon.name)"
+                },
+                onCancel: { configureURL = nil }
+            )
+            .environmentObject(environment)
+        }
     }
 
     private func curatedRow(_ curated: StremioCuratedAddon) -> some View {
@@ -102,19 +117,29 @@ struct StremioAddonStoreBrowserView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             } else if StremioCuratedCatalog.isDebridStreamPreset(curated), debrid.hasAnyToken {
-                Button("Debrid") {
-                    Task {
-                        do {
-                            try await store.installCuratedWithDebrid(curated)
-                            banner = "Installed \(curated.name) with Debrid"
-                        } catch {
-                            banner = "Couldn’t install \(curated.name)"
+                VStack(spacing: 6) {
+                    Button("Debrid") {
+                        Task {
+                            do {
+                                try await store.installCuratedWithDebrid(curated)
+                                banner = "Installed \(curated.name) with Debrid"
+                            } catch {
+                                configureURL = StremioDebridURLBuilder.configurePageURL(from: curated.manifestURL)
+                                banner = error.localizedDescription.nilIfEmpty
+                                    ?? "Open Configure for \(curated.name)"
+                            }
                         }
                     }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.borderedProminent)
+                    .tint(environment.theme.accent)
+                    Button("Configure") {
+                        configureURL = StremioDebridURLBuilder.configurePageURL(from: curated.manifestURL)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .tint(environment.theme.accent)
                 }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.borderedProminent)
-                .tint(environment.theme.accent)
             } else {
                 Button("Add") {
                     Task {

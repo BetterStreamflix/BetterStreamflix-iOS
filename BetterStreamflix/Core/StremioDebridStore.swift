@@ -166,51 +166,57 @@ enum StremioDebridURLBuilder {
                 .appendingPathComponent("manifest.json")
         }
 
-        if host.contains("mediafusion") || id.contains("mediafusion") {
-            // Prefer query-style when possible; many public instances also accept path slug.
-            var root = baseManifestURL.deletingLastPathComponent()
-            while root.lastPathComponent.contains("=") {
-                root = root.deletingLastPathComponent()
-            }
-            var segments = ["\(service.torrentioSlug)=\(encoded)"]
-            if options.cachedOnly { segments.append("cached=true") }
-            let config = segments.joined(separator: "|")
-            return root
-                .appendingPathComponent(config)
-                .appendingPathComponent("manifest.json")
-        }
-
-        if host.contains("aiostreams") || id.contains("aiostreams") {
-            var root = baseManifestURL.deletingLastPathComponent()
-            while root.lastPathComponent.contains("=") {
-                root = root.deletingLastPathComponent()
-            }
-            let config = "\(service.torrentioSlug)=\(encoded)"
-            return root
-                .appendingPathComponent(config)
-                .appendingPathComponent("manifest.json")
+        if host.contains("mediafusion") || id.contains("mediafusion")
+            || host.contains("aiostreams") || id.contains("aiostreams")
+            || id.contains("annatar") || host.contains("annatar")
+            || id.contains("jackettio") || host.contains("jackettio") {
+            // These addons need their own encrypted/configure blob — do not invent
+            // Torrentio-style slugs. Callers should open `/configure` instead.
+            return nil
         }
 
         // TorBox official addon embeds the API key as a path segment.
+        // Always bind the TorBox token — never inject RD/AD/PM as a TorBox path key.
         if host.contains("torbox") || id.contains("torbox") {
+            guard service == .torbox else { return nil }
             return URL(string: "https://stremio.torbox.app/\(encoded)/manifest.json")
         }
 
-        let config = "\(service.torrentioSlug)=\(encoded)"
-        return baseManifestURL
-            .deletingLastPathComponent()
-            .appendingPathComponent(config)
-            .appendingPathComponent("manifest.json")
+        // Unknown hosts: refuse invented slugs — open Configure instead.
+        return nil
     }
 
     static func looksConfigured(_ url: URL) -> Bool {
         let path = url.path.lowercased()
         let host = (url.host ?? "").lowercased()
-        if host.contains("torbox.app"), path.split(separator: "/").count >= 2 {
-            return true
+        if host.contains("torbox.app") {
+            let parts = path
+                .split(separator: "/")
+                .map(String.init)
+                .filter { !$0.isEmpty && $0.lowercased() != "manifest.json" }
+            return parts.contains { $0.count >= 8 }
         }
         let markers = ["realdebrid=", "alldebrid=", "premiumize=", "torbox=", "debrid"]
-        return markers.contains { path.contains($0) }
+        if markers.contains(where: { path.contains($0) }) {
+            return true
+        }
+        // Comet / MediaFusion-style opaque config: long path segment before manifest.json.
+        var root = url
+        if root.lastPathComponent.lowercased() == "manifest.json" {
+            root = root.deletingLastPathComponent()
+        }
+        let segment = root.lastPathComponent
+        if segment.count > 24, !segment.contains(".") {
+            return true
+        }
+        return false
+    }
+
+    /// Addon origin `/configure` page, stripping any Debrid / opaque config path segments.
+    static func configurePageURL(from manifestURL: URL) -> URL {
+        bareManifestURL(from: manifestURL)
+            .deletingLastPathComponent()
+            .appendingPathComponent("configure")
     }
 
     /// Detect which debrid service a configured manifest URL is bound to.
@@ -577,7 +583,16 @@ final class StremioDebridStore: ObservableObject {
     }
 
     func configuredManifestURL(for curated: StremioCuratedAddon) -> URL? {
-        guard let profile = preferredProfile else { return nil }
+        // TorBox curated addon must use a TorBox token even if RD is preferred.
+        let host = (curated.manifestURL.host ?? "").lowercased()
+        let wantsTorBox = host.contains("torbox") || curated.id.lowercased().contains("torbox")
+        let profile: StremioDebridProfile?
+        if wantsTorBox {
+            profile = profiles.first(where: { $0.service == .torbox && $0.isConfigured })
+        } else {
+            profile = preferredProfile
+        }
+        guard let profile else { return nil }
         return StremioDebridURLBuilder.configuredManifestURL(
             for: curated.id,
             service: profile.service,
