@@ -410,6 +410,8 @@ final class AppEnvironment: ObservableObject {
             StremioSubtitleProvider(),
         ])
         library = LibraryStore()
+        // Warm the Stremio addon store so curated defaults seed in the background.
+        _ = StremioAddonStore.shared
     }
 
     private static func importBundledTMDBAccessTokenIfNeeded(into credentials: TMDBCredentialStore) {

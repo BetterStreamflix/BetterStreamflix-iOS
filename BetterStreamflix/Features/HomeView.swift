@@ -80,6 +80,7 @@ struct HomeView: View {
                 ForEach(model.shelves) { shelf in
                     MediaShelfView(title: shelf.title, items: shelf.items, onDetails: openDetails)
                 }
+                StremioHomeShelvesView(onDetails: { openDetails($0) })
             }
             .padding(.bottom)
         }

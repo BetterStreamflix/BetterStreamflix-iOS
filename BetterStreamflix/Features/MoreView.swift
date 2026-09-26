@@ -50,6 +50,22 @@ struct MoreView: View {
                         ) {
                             path.append(MoreRoute.library)
                         }
+                        Divider().opacity(0.35)
+                        hubRow(
+                            title: "Stremio Addons",
+                            subtitle: addonHubSubtitle,
+                            systemImage: "puzzlepiece.extension.fill"
+                        ) {
+                            path.append(MoreRoute.stremioHub)
+                        }
+                        Divider().opacity(0.35)
+                        hubRow(
+                            title: "Manage addons",
+                            subtitle: "Install, reorder, health",
+                            systemImage: "slider.horizontal.3"
+                        ) {
+                            path.append(MoreRoute.stremioSettings)
+                        }
                     }
                     .padding(.horizontal, 20)
 
@@ -143,6 +159,10 @@ struct MoreView: View {
                     SettingsView(showsInlineTitle: true)
                 case .library:
                     LibraryView(showsInlineTitle: true)
+                case .stremioHub:
+                    StremioCatalogHubView()
+                case .stremioSettings:
+                    StremioAddonsSettingsView()
                 }
             }
             .sheet(item: $updateCheckResult) { result in
@@ -286,5 +306,14 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case settings, library
+    case settings, library, stremioHub, stremioSettings
+}
+
+private extension MoreView {
+    var addonHubSubtitle: String {
+        let store = StremioAddonStore.shared
+        let count = store.enabledAddons.count
+        if count == 0 { return "Browse catalogs · install community addons" }
+        return "\(count) enabled · catalogs & streams"
+    }
 }

@@ -92,6 +92,78 @@ struct StremioAddonProviderTests {
         }
         #expect(client.requestedPaths.isEmpty)
     }
+
+    @Test("General addon streams without Source lines still resolve")
+    func generalAddonStreams() async throws {
+        let client = StremioFixtureClient(streamBody: #"""
+        {"streams":[
+          {"name":"CDN 1080p","title":"Fast mirror","url":"https://cdn.example/title.mp4"},
+          {"name":"Torrent only","infoHash":"deadbeef"}
+        ]}
+        """#)
+        let provider = StremioPlaybackProvider(client: client, baseURL: baseURL)
+        let movie = MediaItem(id: "movie", providerID: "tmdb", kind: .movie,
+                              title: "Example", imdbID: "tt0133093")
+        let candidates = try await provider.candidates(for: .init(request: .init(media: movie, episode: nil)))
+        #expect(candidates.count == 1)
+        #expect(candidates.first?.providerName == "CDN 1080p")
+    }
+
+    @Test("Multi-addon playback merges stream candidates")
+    func multiAddonMerge() async throws {
+        let client = StremioFixtureClient(streamBody: #"""
+        {"streams":[{"name":"A","url":"https://cdn.example/a.mp4"}]}
+        """#)
+        let first = URL(string: "https://one.example/config")!
+        let second = URL(string: "https://two.example/config")!
+        let provider = StremioPlaybackProvider(
+            client: client,
+            fixedAddons: [
+                ("one", "One", first),
+                ("two", "Two", second),
+            ]
+        )
+        let movie = MediaItem(id: "movie", providerID: "tmdb", kind: .movie,
+                              title: "Example", imdbID: "tt0133093")
+        let candidates = try await provider.candidates(for: .init(request: .init(media: movie, episode: nil)))
+        #expect(candidates.count == 2)
+        #expect(Set(client.requestedPaths) == [
+            "/config/stream/movie/tt0133093.json",
+        ])
+        #expect(client.requestedPaths.count == 2)
+    }
+
+    @Test("Manifest URL parsing accepts stremio deep links")
+    func manifestURLParsing() {
+        let https = StremioManifestURL.parse("https://v3-cinemeta.strem.io/manifest.json")
+        #expect(https?.absoluteString == "https://v3-cinemeta.strem.io/manifest.json")
+        let deep = StremioManifestURL.parse("stremio://opensubtitles-v3.strem.io/manifest.json")
+        #expect(deep?.scheme == "https")
+        let bare = StremioManifestURL.parse("opensubtitles-v3.strem.io")
+        #expect(bare?.lastPathComponent == "manifest.json")
+    }
+
+    @Test("Catalog meta previews map into MediaItem with IMDb identity")
+    func catalogMetaMapping() throws {
+        let json = Data(#"""
+        {"metas":[{"id":"tt0133093","type":"movie","name":"The Matrix",
+          "poster":"https://img.example/p.jpg","imdb_id":"tt0133093","imdbRating":"8.7"}]}
+        """#.utf8)
+        let payload = try JSONDecoder().decode(StremioCatalogPayload.self, from: json)
+        let item = try #require(payload.metas.first).asMediaItem(providerID: "stremio:cinemeta")
+        #expect(item.imdbID == "tt0133093")
+        #expect(item.kind == .movie)
+        #expect(item.title == "The Matrix")
+        #expect(item.posterURL?.absoluteString == "https://img.example/p.jpg")
+    }
+
+    @Test("Catalog requests encode search extras on the Stremio path")
+    func catalogSearchPath() async throws {
+        let client = StremioFixtureClient(catalogBody: #"{"metas":[]}"#)
+        let addon = StremioAddonClient(client: client, baseURL: baseURL)
+        _ = try await addon.catalog(type: "movie", id: "top", extras: ["search": "matrix"])
+        #expect(client.requestedPaths == ["/config/catalog/movie/top/search=matrix.json"])
+    }
 }
 
 private final class StremioFixtureClient: HTTPClientProtocol, @unchecked Sendable {
@@ -99,18 +171,39 @@ private final class StremioFixtureClient: HTTPClientProtocol, @unchecked Sendabl
     private var paths: [String] = []
     private let streamBody: String
     private let subtitleBody: String
+    private let catalogBody: String
+    private let manifestBody: String
     var requestedPaths: [String] { lock.withLock { paths } }
 
-    init(streamBody: String = #"{"streams":[]}"#, subtitleBody: String = #"{"subtitles":[]}"#) {
+    init(
+        streamBody: String = #"{"streams":[]}"#,
+        subtitleBody: String = #"{"subtitles":[]}"#,
+        catalogBody: String = #"{"metas":[]}"#,
+        manifestBody: String = #"""
+        {"id":"test.addon","name":"Test","version":"1.0.0","resources":["stream","catalog"],
+         "types":["movie","series"],"catalogs":[{"type":"movie","id":"top","name":"Top"}]}
+        """#
+    ) {
         self.streamBody = streamBody
         self.subtitleBody = subtitleBody
+        self.catalogBody = catalogBody
+        self.manifestBody = manifestBody
     }
 
     func data(for request: URLRequest) async throws -> HTTPResponse {
         let url = try #require(request.url)
         lock.withLock { paths.append(url.path) }
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
-        let body = url.path.contains("/subtitles/") ? subtitleBody : streamBody
+        let body: String
+        if url.path.contains("/subtitles/") {
+            body = subtitleBody
+        } else if url.path.contains("/catalog/") {
+            body = catalogBody
+        } else if url.path.hasSuffix("/manifest.json") {
+            body = manifestBody
+        } else {
+            body = streamBody
+        }
         return HTTPResponse(data: Data(body.utf8), response: HTTPURLResponse(
             url: url, statusCode: 200, httpVersion: nil, headerFields: nil
         )!)

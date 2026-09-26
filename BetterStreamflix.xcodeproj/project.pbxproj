@@ -75,6 +75,10 @@
 		A1F82C4E9B7D4011AA220014 /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220004 /* MoreView.swift */; };
 		A1F82C4E9B7D4011AA220015 /* WatchlistToastStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */; };
 		95C4E4D6C05917998AC040F7 /* FirstLaunchSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */; };
+		50AF31E5D50D4A0B9A80088D /* StremioProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0935EB00024C51ABBAC202 /* StremioProtocol.swift */; };
+		28127D9AD9574E78931EACEB /* StremioAddonStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B6891778014489A6D9F8EC /* StremioAddonStore.swift */; };
+		20F27DA1DFBA474BB73159C3 /* StremioAddonsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */; };
+		7ADDA98E11AF42EEB0FAF2A5 /* StremioCatalogViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -160,6 +164,10 @@
 		A1F82C4E9B7D4011AA220004 /* MoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreView.swift; sourceTree = "<group>"; };
 		A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistToastStore.swift; sourceTree = "<group>"; };
 		A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstLaunchSetupView.swift; sourceTree = "<group>"; };
+		9E0935EB00024C51ABBAC202 /* StremioProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioProtocol.swift; sourceTree = "<group>"; };
+		A0B6891778014489A6D9F8EC /* StremioAddonStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonStore.swift; sourceTree = "<group>"; };
+		CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonsSettingsView.swift; sourceTree = "<group>"; };
+		4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioCatalogViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -221,6 +229,8 @@
 				F9A6BBB0B5768AA4DC07E747 /* StreamingCommunityModels.swift */,
 				8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */,
 				7376D52AEC6961ADAD1B97DA /* StremioAddonProvider.swift */,
+				A0B6891778014489A6D9F8EC /* StremioAddonStore.swift */,
+				9E0935EB00024C51ABBAC202 /* StremioProtocol.swift */,
 				A77A50CD75D840C27F9848DD /* SubtitleProviders.swift */,
 				D41A5B7B30630001007A449E /* SubtitleCache.swift */,
 				1B5CE7E669118A0E5B774F5E /* TMDBClient.swift */,
@@ -284,6 +294,8 @@
 				A1F82C4E9B7D4011AA220004 /* MoreView.swift */,
 				A1F82C4E9B7D4011AA220005 /* WatchlistToastStore.swift */,
 				A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */,
+				4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */,
+				CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */,
 				CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */,
 			);
 			path = Features;
@@ -427,6 +439,10 @@
 				712D241B929CDF81EAC2864F /* StreamingCommunityModels.swift in Sources */,
 				7881E5A49D1E2248771A40D7 /* StreamingCommunityProvider.swift in Sources */,
 				37850C3BF6EB0809B715691D /* StremioAddonProvider.swift in Sources */,
+				7ADDA98E11AF42EEB0FAF2A5 /* StremioCatalogViews.swift in Sources */,
+				20F27DA1DFBA474BB73159C3 /* StremioAddonsSettingsView.swift in Sources */,
+				28127D9AD9574E78931EACEB /* StremioAddonStore.swift in Sources */,
+				50AF31E5D50D4A0B9A80088D /* StremioProtocol.swift in Sources */,
 				C319696D4F332DC5805B629A /* SubtitleProviders.swift in Sources */,
 				D41A5B7C30630001007A449E /* SubtitleCache.swift in Sources */,
 				1C890DC7CEF559EEB339C409 /* TMDBClient.swift in Sources */,
@@ -481,7 +497,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.9;
+				MARKETING_VERSION = 0.1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -674,7 +690,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.9;
+				MARKETING_VERSION = 0.1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

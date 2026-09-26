@@ -241,7 +241,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
             case .hiAnime: "Anime playback (English / Japanese)"
             case .anikoto: "Alternate anime resolver"
             case .animeIL: "Hebrew anime streams"
-            case .stremio: "Addon-backed streams and extras"
+            case .stremio: "Installed Stremio addons (streams & extras)"
             default: "Core playback source"
             }
         }
@@ -281,8 +281,29 @@ enum AppSetupStore {
     static let equalProvidersMigrationKey = "playback.providers.equalLanguages.v1"
     static let languageGroupKey = "playback.languageGroup"
     static let coreResolversKey = "playback.coreResolvers.enabled"
+    static let stremioIndependentKey = "playback.stremio.independent"
     static let languageGroupMigrationKey = "playback.languageGroup.v1"
     static let languageDidChangeNotification = Notification.Name("playback.languageGroup.didChange")
+
+    /// Stremio stream discovery can run without enabling every Core anime resolver.
+    static var isStremioPlaybackEnabled: Bool {
+        if UserDefaults.standard.object(forKey: StremioAddonStore.playbackEnabledKey) != nil {
+            return UserDefaults.standard.bool(forKey: StremioAddonStore.playbackEnabledKey)
+        }
+        return isCoreResolversEnabled && isPlaybackSourceEnabled(.stremio)
+    }
+
+    static func setStremioPlaybackEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: StremioAddonStore.playbackEnabledKey)
+        setPlaybackSource(.stremio, enabled: enabled)
+        if enabled {
+            UserDefaults.standard.set(true, forKey: stremioIndependentKey)
+        }
+        NotificationCenter.default.post(
+            name: languageDidChangeNotification,
+            object: activePlaybackLanguageGroup.rawValue
+        )
+    }
 
     /// One-shot: enable every playback source after removing the German-only default bias.
     static func migrateEqualProvidersIfNeeded() {
@@ -350,7 +371,15 @@ enum AppSetupStore {
     static func setCoreResolversEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: coreResolversKey)
         for source in PlaybackSourcePreferenceID.sources(in: .core) {
+            // Preserve an independently enabled Stremio toggle when Core turns off.
+            if source == .stremio, !enabled, isStremioPlaybackEnabled {
+                setPlaybackSource(source, enabled: true)
+                continue
+            }
             setPlaybackSource(source, enabled: enabled)
+        }
+        if enabled {
+            UserDefaults.standard.set(true, forKey: StremioAddonStore.playbackEnabledKey)
         }
         // Keep other spoken languages hard-off without resetting Advanced toggles
         // inside the active language group.
@@ -362,11 +391,18 @@ enum AppSetupStore {
         NotificationCenter.default.post(name: languageDidChangeNotification, object: active.rawValue)
     }
 
-    /// Preference IDs that belong to the active language, plus Core when that switch is on.
+    /// Preference IDs that belong to the active language, plus Core / Stremio when enabled.
+    ///
+    /// Policy: the playback language picker still gates language-group scrapers.
+    /// Stremio addons are language-agnostic protocol sources — they may resolve
+    /// alongside the active language when Stremio playback is on (independently
+    /// or via Core). Catalog browsing never requires a language group.
     static func allowedPreferenceIDs() -> Set<PlaybackSourcePreferenceID> {
         var allowed = Set(PlaybackSourcePreferenceID.sources(in: activePlaybackLanguageGroup))
         if isCoreResolversEnabled {
             allowed.formUnion(PlaybackSourcePreferenceID.sources(in: .core))
+        } else if isStremioPlaybackEnabled {
+            allowed.insert(.stremio)
         }
         return allowed
     }
@@ -404,7 +440,11 @@ enum AppSetupStore {
             if source.languageGroup == selected {
                 enabled = true
             } else if source.languageGroup == .core {
-                enabled = coreEnabled
+                if source == .stremio {
+                    enabled = coreEnabled || isStremioPlaybackEnabled
+                } else {
+                    enabled = coreEnabled
+                }
             } else {
                 enabled = false
             }

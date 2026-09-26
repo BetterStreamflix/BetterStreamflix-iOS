@@ -184,6 +184,16 @@ struct SettingsView: View {
 
                 ProvidersSettingsSection()
 
+                Section {
+                    StremioAddonsSettingsLink()
+                    Text("Install community Stremio addons, browse their catalogs, and resolve streams into the native player. Playback language scrapers stay separate.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Stremio Ecosystem")
+                }
+                .listRowBackground(AppTheme.surface)
+
                 Section("Subtitles & Audio") {
                     Toggle("Show subtitles by default", isOn: $subtitlesEnabledByDefault)
                     languagePicker("Preferred subtitle language", selection: $primarySubtitleLanguage)

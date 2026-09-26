@@ -20,7 +20,7 @@ No third-party Swift packages are required.
 
 ## Version
 
-Current marketing version: **0.0.6**. CI advances the build number on each release.
+Current marketing version: **0.1.10**. CI advances the build number on each release.
 
 ## Unsigned IPA (GitHub Actions + Releases)
 
@@ -42,17 +42,18 @@ Every push to `main` runs **Unsigned IPA** (`.github/workflows/unsigned-ipa.yml`
 `https://raw.githubusercontent.com/BetterStreamflix/BetterStreamflix-update-feed/main/ios/latest.json`,  
 compares version/build, and offers Download / up-to-date / retry states. No personal access token is embedded in the app.
 
-Locally: `./build-unsigned-ipa.sh 0.0.6`.
+Locally: `./build-unsigned-ipa.sh 0.1.10`.
 
 ## Features
 
 - Cinematic Home hero with Liquid Glass action cluster, Continue Watching, Watchlist feedback, and TMDB shelves
+- **Stremio ecosystem** — install community addons, browse catalogs, multi-addon stream/subtitle resolve into NativePlayer
 - Library tab (Continue / Watchlist / Watched) with glass empty states
 - Movies & Series catalogs, Search with glass recent chips
 - Detail with tapable cast → full actor profiles, seasons/episodes, Play / My List
 - Logo-only splash; branded About support CTAs (Coffee, Telegram, Discord, Patreon)
 - AVPlayer HLS with source/quality, double-tap ±10s, volume/brightness pans, glass controls, PiP / AirPlay
-- Settings / About: themes, languages, backup, updates via Releases, community CTAs, credits
+- Settings / About: themes, languages, Stremio addons, backup, updates via Releases, community CTAs, credits
 
 ## Legal
 

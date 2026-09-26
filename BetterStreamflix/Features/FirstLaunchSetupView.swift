@@ -447,7 +447,7 @@ struct ProvidersSettingsSection: View {
                 Toggle(isOn: coreBinding) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Core / Anime & Stremio")
-                        Text("StreamingCommunity, HiAnime, Anikoto, AnimeIL, and Stremio. Off by default.")
+                        Text("StreamingCommunity, HiAnime, Anikoto, AnimeIL. Stremio addons can also be enabled independently under Stremio Ecosystem.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -644,7 +644,7 @@ struct PlaybackCoreResolversToggle: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Core / Anime & Stremio")
                         .font(.headline.weight(.semibold))
-                    Text("Optional add-on. Off by default so Deutsch means German VOD only.")
+                    Text("Optional. Off by default. Stremio addons can also be managed independently under Stremio Ecosystem.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
