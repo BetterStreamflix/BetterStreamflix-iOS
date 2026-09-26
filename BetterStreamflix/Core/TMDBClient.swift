@@ -309,6 +309,7 @@ actor TMDBClient {
             birthday: details.birthday,
             placeOfBirth: details.placeOfBirth,
             knownForDepartment: details.knownForDepartment,
+            popularity: details.popularity,
             profileURL: details.profilePath.flatMap {
                 URL(string: "https://image.tmdb.org/t/p/original\($0)")
             },
@@ -1691,10 +1692,11 @@ private struct TMDBPersonDetailsPayload: Decodable, Sendable {
     let birthday: String?
     let placeOfBirth: String?
     let knownForDepartment: String?
+    let popularity: Double?
     let profilePath: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, biography, birthday
+        case id, name, biography, birthday, popularity
         case placeOfBirth = "place_of_birth"
         case knownForDepartment = "known_for_department"
         case profilePath = "profile_path"

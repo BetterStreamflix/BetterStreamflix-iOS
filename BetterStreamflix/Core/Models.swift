@@ -141,6 +141,7 @@ struct PersonProfile: Identifiable, Hashable, Sendable {
     let birthday: String?
     let placeOfBirth: String?
     let knownForDepartment: String?
+    let popularity: Double?
     let profileURL: URL?
     let knownFor: [TrendingTitle]
     let filmography: [PersonCredit]

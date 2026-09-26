@@ -170,8 +170,8 @@ final class PlaybackDiscovery {
     private let backgroundDeadline: Duration
     private let prepare: @Sendable (PlaybackCandidate) async throws -> PlayableStream
 
-    init(settleDelay: Duration = .seconds(2), initialDeadline: Duration = .seconds(15),
-         backgroundDeadline: Duration = .seconds(90),
+    init(settleDelay: Duration = .milliseconds(350), initialDeadline: Duration = .seconds(8),
+         backgroundDeadline: Duration = .seconds(45),
          prepare: @escaping @Sendable (PlaybackCandidate) async throws -> PlayableStream = { try await PlaybackDiscovery.prepare($0) }) {
         self.settleDelay = settleDelay
         self.initialDeadline = initialDeadline
@@ -182,7 +182,8 @@ final class PlaybackDiscovery {
     nonisolated static func prepare(_ candidate: PlaybackCandidate) async throws -> PlayableStream {
         try await withThrowingTaskGroup(of: PlayableStream.self) { group in
             group.addTask { try await prepareStream(candidate) }
-            group.addTask { try await Task.sleep(for: .seconds(15)); throw AppError.noStream }
+            // Fail fast so parallel discovery can advance to the next source.
+            group.addTask { try await Task.sleep(for: .seconds(6)); throw AppError.noStream }
             defer { group.cancelAll() }
             guard let result = try await group.next() else { throw AppError.noStream }
             return result
@@ -211,7 +212,18 @@ final class PlaybackDiscovery {
         PlaybackStartupTrace.mark(
             "candidate PLAYABLE id=\(candidate.id) duration=\(PlaybackStartupTrace.duration(since: perfStart))ms"
         )
-        let qualities = await HLSPlaylistInspector().availableQualities(for: source)
+        // Keep qualities off the critical path — the player session refreshes
+        // them after playback starts. A short race still captures fast playlists.
+        let qualities: [StreamQuality] = await withTaskGroup(of: [StreamQuality].self) { group in
+            group.addTask { await HLSPlaylistInspector().availableQualities(for: source) }
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(500))
+                return []
+            }
+            let first = await group.next() ?? []
+            group.cancelAll()
+            return first
+        }
         PlaybackStartupTrace.mark(
             "candidate QUALITIES id=\(candidate.id) count=\(qualities.count) duration=\(PlaybackStartupTrace.duration(since: perfStart))ms"
         )

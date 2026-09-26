@@ -1540,55 +1540,45 @@ struct PlayerScreen: View {
                 dismiss()
             }
         )
-        .overlay(alignment: .top) {
-            if let sourceSwitchStatus {
-                sourceSwitchOverlay(
-                    sourceSwitchStatus
-                )
-                .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
-                .transition(
-                    .move(edge: .top)
-                        .combined(
-                            with: .opacity
+        .overlay {
+            Group {
+                if let sourceSwitchStatus {
+                    playbackStatusBanner {
+                        sourceSwitchOverlay(sourceSwitchStatus)
+                    }
+                } else if let pendingEpisodeLoad {
+                    playbackStatusBanner {
+                        playbackStatusOverlay(
+                            title: "Loading next episode…",
+                            subtitle: playbackLoadingSubtitle(
+                                for: pendingEpisodeLoad.request
+                            ),
+                            isLoading: true,
+                            cancelAccessibilityLabel: "Cancel next episode loading",
+                            onCancel: cancelPendingEpisodeLoad
                         )
-                )
-                .zIndex(100)
-            } else if let pendingEpisodeLoad {
-                playbackStatusOverlay(
-                    title: "Loading next episode…",
-                    subtitle: playbackLoadingSubtitle(
-                        for: pendingEpisodeLoad.request
-                    ),
-                    isLoading: true,
-                    cancelAccessibilityLabel: "Cancel next episode loading",
-                    onCancel: cancelPendingEpisodeLoad
-                )
-                .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
-                .transition(
-                    .move(edge: .top)
-                        .combined(with: .opacity)
-                )
-                .zIndex(100)
-            } else if model.errorMessage == nil,
-                      model.isLoading
-                        || session.playbackState == .preparing
-                        || session.playbackState == .recovering {
-                playbackStatusOverlay(
-                    title: reconnectBannerTitle,
-                    subtitle: playbackLoadingSubtitle(
-                        for: model.request
-                    ),
-                    isLoading: true,
-                    cancelAccessibilityLabel: "Close player",
-                    onCancel: closePlayerDuringLoading
-                )
-                .padding(.top, ScreenMetrics.topSafeAreaInset + 8)
-                .transition(
-                    .move(edge: .top)
-                        .combined(with: .opacity)
-                )
-                .zIndex(100)
+                    }
+                } else if model.errorMessage == nil,
+                          model.isLoading
+                            || session.playbackState == .preparing
+                            || session.playbackState == .recovering {
+                    // Centered — avoids floating over top-center gesture
+                    // feedback / settings chrome.
+                    playbackStatusBanner(centered: true) {
+                        playbackStatusOverlay(
+                            title: reconnectBannerTitle,
+                            subtitle: playbackLoadingSubtitle(
+                                for: model.request
+                            ),
+                            isLoading: true,
+                            cancelAccessibilityLabel: "Close player",
+                            onCancel: closePlayerDuringLoading
+                        )
+                    }
+                }
             }
+            .zIndex(40)
+            .allowsHitTesting(true)
         }
         .overlay(
             alignment: .bottomTrailing
@@ -2002,6 +1992,32 @@ struct PlayerScreen: View {
                 }
             }
         )
+    }
+
+    @ViewBuilder
+    private func playbackStatusBanner<Content: View>(
+        centered: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if centered {
+            VStack {
+                Spacer(minLength: 0)
+                content()
+                    .padding(.horizontal, 20)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack {
+                content()
+                    .padding(.top, ScreenMetrics.topSafeAreaInset + 52)
+                    .padding(.horizontal, 20)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
     }
 
     private func playbackStatusOverlay(

@@ -15,6 +15,7 @@ struct PersonProfileView: View {
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sourceLookup: SourceLookupCoordinator
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var profile: PersonProfile?
     @State private var isLoading = true
@@ -23,13 +24,28 @@ struct PersonProfileView: View {
     @State private var showFullBiography = false
     @State private var filmographyFilter: FilmographyFilter = .all
     @State private var contentAppeared = false
+    @State private var heroScrollMinY: CGFloat = 0
 
     private var displayName: String { profile?.name ?? placeholderName }
+
+    private var showsCompactHeader: Bool {
+        -heroScrollMinY > 96
+    }
+
+    private let actorCoordinateSpace = "actorProfileScroll"
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.lg) {
                 heroHeader
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: ActorHeroScrollOffsetKey.self,
+                                value: proxy.frame(in: .named(actorCoordinateSpace)).minY
+                            )
+                        }
+                    }
                     .opacity(contentAppeared || profile == nil ? 1 : 0)
                     .offset(y: contentAppeared || profile == nil ? 0 : 12)
 
@@ -53,14 +69,40 @@ struct PersonProfileView: View {
                     }
                 }
             }
-            .padding(.bottom, 40)
+            // Clear the tab bar + home indicator so filmography filters stay usable.
+            .padding(.bottom, 108)
             .animation(reduceMotion ? nil : DesignTokens.Motion.soft, value: showFullBiography)
             .animation(reduceMotion ? nil : DesignTokens.Motion.soft, value: filmographyFilter)
             .animation(reduceMotion ? nil : DesignTokens.Motion.entrance, value: profile?.id)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .coordinateSpace(name: actorCoordinateSpace)
+        .onPreferenceChange(ActorHeroScrollOffsetKey.self) { heroScrollMinY = $0 }
         .background { AppScreenBackground() }
-        .profileStackChrome(title: displayName)
+        .ignoresSafeArea(edges: .top)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .tabBar)
+        .background {
+            NavigationChromeStabilizer(enablesInteractivePop: true)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .overlay(alignment: .top) {
+            ScrollRevealChrome(
+                showsCompactTitle: showsCompactHeader,
+                reduceMotion: reduceMotion,
+                onBack: { dismiss() }
+            ) {
+                Text(displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+        }
         .overlay {
             if isLoading && profile == nil {
                 loadingState
@@ -115,11 +157,13 @@ struct PersonProfileView: View {
             }
             .shadow(color: .black.opacity(0.4), radius: 16, y: 8)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text(displayName)
                     .font(.title2.weight(.bold))
                     .foregroundStyle(AppTheme.primaryText)
                     .accessibilityAddTraits(.isHeader)
+                    .opacity(showsCompactHeader ? 0 : 1)
+                    .accessibilityHidden(showsCompactHeader)
 
                 if let department = profile?.knownForDepartment, !department.isEmpty {
                     Text(department)
@@ -145,16 +189,24 @@ struct PersonProfileView: View {
                 }
 
                 if let profile {
-                    HStack(spacing: 8) {
-                        if !profile.knownFor.isEmpty {
-                            metaChip(
-                                "\(profile.knownFor.count) known for",
+                    HStack(spacing: 10) {
+                        if let popularity = profile.popularity, popularity > 0 {
+                            equalMetaPill(
+                                value: Self.compactPopularity(popularity),
+                                label: "Fans",
+                                systemImage: "heart.fill"
+                            )
+                        } else if !profile.knownFor.isEmpty {
+                            equalMetaPill(
+                                value: "\(profile.knownFor.count)",
+                                label: "Known",
                                 systemImage: "star.fill"
                             )
                         }
                         if !profile.filmography.isEmpty {
-                            metaChip(
-                                "\(profile.filmography.count) credits",
+                            equalMetaPill(
+                                value: "\(profile.filmography.count)",
+                                label: "Credits",
                                 systemImage: "film.stack"
                             )
                         }
@@ -168,16 +220,48 @@ struct PersonProfileView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
-        .padding(.top, 14)
+        .padding(.top, ScreenMetrics.topSafeAreaInset + 52)
     }
 
-    private func metaChip(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(AppTheme.elevatedSurface, in: Capsule())
+    /// Fixed equal circles so Fans and Credits never mismatch in size.
+    private func equalMetaPill(value: String, label: String, systemImage: String) -> some View {
+        VStack(spacing: 5) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.elevatedSurface)
+                Circle()
+                    .stroke(.white.opacity(0.12), lineWidth: 0.8)
+                VStack(spacing: 2) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(environment.theme.accentBright)
+                    Text(value)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .frame(width: 64, height: 64)
+
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(width: 72)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(value) \(label)")
+    }
+
+    private static func compactPopularity(_ value: Double) -> String {
+        if value >= 1000 {
+            return String(format: "%.1fk", value / 1000)
+        }
+        if value >= 100 {
+            return String(format: "%.0f", value)
+        }
+        return String(format: "%.1f", value)
     }
 
     // MARK: - Biography
@@ -209,12 +293,12 @@ struct PersonProfileView: View {
     // MARK: - Known For
 
     private func knownForSection(_ titles: [TrendingTitle]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             sectionHeader("Known For", count: titles.count)
                 .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 12) {
+                LazyHStack(spacing: 14) {
                     ForEach(titles) { title in
                         Button {
                             open(title)
@@ -233,6 +317,25 @@ struct PersonProfileView: View {
                                     .frame(
                                         width: MediaArtworkLayout.shelfPosterWidth,
                                         height: MediaArtworkLayout.shelfPosterWidth * 1.5
+                                    )
+                                    .clipShape(
+                                        RoundedRectangle(
+                                            cornerRadius: DesignTokens.Radius.poster,
+                                            style: .continuous
+                                        )
+                                    )
+                                    .overlay {
+                                        RoundedRectangle(
+                                            cornerRadius: DesignTokens.Radius.poster,
+                                            style: .continuous
+                                        )
+                                        .stroke(.white.opacity(0.1), lineWidth: 0.8)
+                                    }
+
+                                    LinearGradient(
+                                        colors: [.clear, .black.opacity(0.55)],
+                                        startPoint: .center,
+                                        endPoint: .bottom
                                     )
                                     .clipShape(
                                         RoundedRectangle(
@@ -279,7 +382,7 @@ struct PersonProfileView: View {
 
     private func filmographySection(_ credits: [PersonCredit]) -> some View {
         let filtered = filteredFilmography(credits)
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 14) {
             sectionHeader("Filmography", count: credits.count)
                 .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
 
@@ -468,5 +571,12 @@ struct PersonProfileView: View {
             }
         }
         isLoading = false
+    }
+}
+
+private struct ActorHeroScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

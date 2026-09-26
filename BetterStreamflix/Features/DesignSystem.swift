@@ -416,8 +416,92 @@ struct PageTitleTopScrim: View {
     }
 }
 
-/// Shared Back + inline title + material navigation chrome used by Actor profiles
-/// and title Detail so both stacks feel identical.
+/// Floating back control shared by Detail and Actor scroll-reveal chrome.
+struct DetailBackControl: View {
+    static let size: CGFloat = 36
+
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: Self.size, height: Self.size)
+                .contentShape(Circle())
+                .background {
+                    Circle()
+                        .fill(.black.opacity(0.28))
+                }
+                .glassEffectWithFallback(in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(.white.opacity(0.22), lineWidth: 0.7)
+                }
+                .shadow(color: .black.opacity(0.28), radius: 6, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back")
+    }
+}
+
+/// Scroll-reveal sticky chrome: back is always available; title/logo + material
+/// only appear after the hero has scrolled away. Used by Detail and Actor.
+struct ScrollRevealChrome<Title: View>: View {
+    let showsCompactTitle: Bool
+    let reduceMotion: Bool
+    let onBack: () -> Void
+    @ViewBuilder let title: () -> Title
+
+    private let rowHeight: CGFloat = 40
+    private let leading: CGFloat = 12
+
+    var body: some View {
+        let topInset = ScreenMetrics.topSafeAreaInset
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                DetailBackControl(action: onBack)
+                if showsCompactTitle {
+                    Spacer(minLength: 8)
+                    title()
+                        .frame(maxWidth: 240)
+                    Spacer(minLength: 8)
+                    Color.clear
+                        .frame(width: DetailBackControl.size, height: DetailBackControl.size)
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, leading)
+            .frame(height: rowHeight, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .padding(.top, topInset)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(alignment: .top) {
+            if showsCompactTitle {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.94)
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(
+                            colors: [.white.opacity(0.14), .white.opacity(0.02)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(height: 0.5)
+                    }
+                    .frame(height: topInset + rowHeight)
+                    .frame(maxWidth: .infinity)
+                    .ignoresSafeArea(edges: .top)
+            }
+        }
+        .ignoresSafeArea(edges: .top)
+        .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactTitle)
+    }
+}
+
+/// Legacy always-on nav chrome — prefer `ScrollRevealChrome` for Detail / Actor.
 struct ProfileStackChrome: ViewModifier {
     let title: String
 

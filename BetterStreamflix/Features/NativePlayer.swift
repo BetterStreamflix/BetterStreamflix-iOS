@@ -604,7 +604,18 @@ final class PlayerSession: ObservableObject {
         }
         let qualityPerfStart =
             PlaybackStartupTrace.now()
-        let qualities = await playlistInspector.availableQualities(for: preparedSource)
+        // Cap playlist inspection so a slow master manifest cannot idle the
+        // preparing state before the first frame.
+        let qualities: [StreamQuality] = await withTaskGroup(of: [StreamQuality].self) { group in
+            group.addTask { await playlistInspector.availableQualities(for: preparedSource) }
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(700))
+                return []
+            }
+            let first = await group.next() ?? []
+            group.cancelAll()
+            return first
+        }
         PlaybackStartupTrace.mark(
             "PlayerSession qualities READY duration=\(PlaybackStartupTrace.duration(since: qualityPerfStart))ms"
         )

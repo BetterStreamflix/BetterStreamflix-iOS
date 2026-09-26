@@ -9,6 +9,7 @@ struct HomeView: View {
     @EnvironmentObject private var sourceLookup: SourceLookupCoordinator
     @EnvironmentObject private var watchlistToast: WatchlistToastStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.titleTransitionSelection) private var titleTransitionSelection
     let onInitialLoadCompleted: () -> Void
     @StateObject private var model = HomeViewModel()
     @State private var selectedDetails: ResolvedMediaItem?
@@ -106,6 +107,12 @@ struct HomeView: View {
             }
         }
         .errorAlert($model.errorMessage)
+        .onChange(of: selectedDetails?.id) { _, newValue in
+            // Drop matched-geometry residue as soon as Detail is gone.
+            if newValue == nil {
+                titleTransitionSelection?.clear()
+            }
+        }
     }
 
     private func openDetails(_ trending: TrendingTitle) {
@@ -654,18 +661,31 @@ struct CenteredHeroArtwork: View {
             .overlay {
                 Group {
                     if let data, let image = UIImage(data: data) {
-                        if UIDevice.current.userInterfaceIdiom == .pad {
-                            GeometryReader { proxy in
+                        GeometryReader { proxy in
+                            let fit = Self.fitScale(
+                                imageSize: image.size,
+                                in: proxy.size
+                            )
+                            ZStack {
+                                // Soft fill behind letterboxing so fit never
+                                // leaves hard empty bars.
                                 Image(uiImage: image)
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                    .frame(width: proxy.size.width, height: proxy.size.height)
+                                    .blur(radius: 28)
+                                    .opacity(0.42)
+                                    .allowsHitTesting(false)
+
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(
+                                        width: image.size.width * fit,
+                                        height: image.size.height * fit
+                                    )
+                                    .frame(width: proxy.size.width, height: proxy.size.height)
                             }
-                        } else {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         }
                     } else {
                         Rectangle().fill(.gray.opacity(0.16))
@@ -674,6 +694,21 @@ struct CenteredHeroArtwork: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
             .clipped()
+    }
+
+    /// Prefer showing the full artwork; only slight overscan when the frame
+    /// is nearly the same aspect (avoids aggressive crop of posters/backdrops).
+    private static func fitScale(imageSize: CGSize, in frame: CGSize) -> CGFloat {
+        guard imageSize.width > 1, imageSize.height > 1,
+              frame.width > 1, frame.height > 1 else { return 1 }
+        let fit = min(frame.width / imageSize.width, frame.height / imageSize.height)
+        let fill = max(frame.width / imageSize.width, frame.height / imageSize.height)
+        let cropRatio = fill / fit
+        // If fill would crop less than ~8%, allow a gentle fill; otherwise fit.
+        if cropRatio <= 1.08 {
+            return fill
+        }
+        return fit
     }
 }
 
