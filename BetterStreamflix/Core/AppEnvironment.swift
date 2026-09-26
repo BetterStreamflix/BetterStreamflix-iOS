@@ -381,6 +381,7 @@ final class AppEnvironment: ObservableObject {
 
     init() {
         AppSetupStore.migrateEqualProvidersIfNeeded()
+        AppSetupStore.migratePlaybackLanguageIfNeeded()
         theme = AppTheme(
             persistedValue: UserDefaults.standard.string(forKey: "appearance.themeColor")
         )

@@ -61,6 +61,7 @@ actor ProviderRegistry {
             PlaybackSourcePreferenceID.allCases.contains { preference in
                 preference.matches(providerID: provider.id)
                     && AppSetupStore.isPlaybackSourceEnabled(preference)
+                    && AppSetupStore.allowedPreferenceIDs().contains(preference)
             }
         }
     }

@@ -201,7 +201,7 @@ struct SettingsView: View {
                     languagePicker("Default subtitles", selection: $primarySubtitleLanguage)
                     languagePicker("Backup subtitles", selection: $secondarySubtitleLanguage, allowsNone: true)
                     languagePicker("Default audio", selection: $audioLanguage)
-                    Text("Anime uses the preferred language, then the backup language, when a title has no saved source. Subtitle visibility also applies only until you choose on or off for that title.")
+                    Text("Provider language is chosen under Catalog & Providers. These controls set in-stream audio/subtitle tracks and anime ranking when Core is enabled.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("For multi-audio streams, if the selected audio track is unavailable, English is used automatically.")
@@ -390,7 +390,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.1.1"
+        ) as? String ?? "0.1.2"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"

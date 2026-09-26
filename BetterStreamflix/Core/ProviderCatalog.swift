@@ -12,8 +12,37 @@ enum ProviderLanguageGroup: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    /// German is kept available but no longer privileged over other languages.
-    var isFirstClass: Bool { false }
+    /// Spoken playback languages the user can pick (excludes `.core`).
+    static var spokenLanguages: [ProviderLanguageGroup] {
+        [.german, .english, .italian, .spanish, .french, .polish]
+    }
+
+    var isSpokenLanguage: Bool { self != .core }
+
+    /// Primary ISO 639-1 code used for discovery ranking inside this group.
+    var primaryAudioCode: String {
+        switch self {
+        case .german: "de"
+        case .english: "en"
+        case .italian: "it"
+        case .spanish: "es"
+        case .french: "fr"
+        case .polish: "pl"
+        case .core: "en"
+        }
+    }
+
+    var flagEmoji: String {
+        switch self {
+        case .german: "🇩🇪"
+        case .english: "🇬🇧"
+        case .italian: "🇮🇹"
+        case .spanish: "🇪🇸"
+        case .french: "🇫🇷"
+        case .polish: "🇵🇱"
+        case .core: "🎬"
+        }
+    }
 
     var title: String {
         switch self {
@@ -25,6 +54,14 @@ enum ProviderLanguageGroup: String, CaseIterable, Identifiable, Codable {
         case .polish: "Polish"
         case .core: "Core"
         }
+    }
+
+    var providerCount: Int {
+        PlaybackSourcePreferenceID.sources(in: self).count
+    }
+
+    var confirmationMessage: String {
+        "\(title) sources active · \(providerCount) providers"
     }
 }
 
@@ -242,6 +279,10 @@ enum AppSetupStore {
     static let completedKey = "setup.completed"
     static let catalogSourceKey = "catalog.source"
     static let equalProvidersMigrationKey = "playback.providers.equalLanguages.v1"
+    static let languageGroupKey = "playback.languageGroup"
+    static let coreResolversKey = "playback.coreResolvers.enabled"
+    static let languageGroupMigrationKey = "playback.languageGroup.v1"
+    static let languageDidChangeNotification = Notification.Name("playback.languageGroup.didChange")
 
     /// One-shot: enable every playback source after removing the German-only default bias.
     static func migrateEqualProvidersIfNeeded() {
@@ -250,6 +291,13 @@ enum AppSetupStore {
             UserDefaults.standard.set(true, forKey: source.defaultsKey)
         }
         UserDefaults.standard.set(true, forKey: equalProvidersMigrationKey)
+    }
+
+    /// One-shot: pick German as the active playback language and turn Core off by default.
+    static func migratePlaybackLanguageIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: languageGroupMigrationKey) else { return }
+        applyLanguageGroup(.german, coreEnabled: false)
+        UserDefaults.standard.set(true, forKey: languageGroupMigrationKey)
     }
 
     static var isCompleted: Bool {
@@ -279,14 +327,88 @@ enum AppSetupStore {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: catalogSourceKey) }
     }
 
+    /// Active spoken language for playback discovery (never `.core`).
+    static var activePlaybackLanguageGroup: ProviderLanguageGroup {
+        let raw = UserDefaults.standard.string(forKey: languageGroupKey) ?? ProviderLanguageGroup.german.rawValue
+        let group = ProviderLanguageGroup(rawValue: raw) ?? .german
+        return group.isSpokenLanguage ? group : .german
+    }
+
+    static var isCoreResolversEnabled: Bool {
+        if UserDefaults.standard.object(forKey: coreResolversKey) == nil {
+            return false
+        }
+        return UserDefaults.standard.bool(forKey: coreResolversKey)
+    }
+
+    static func setActivePlaybackLanguageGroup(_ group: ProviderLanguageGroup) {
+        let selected = group.isSpokenLanguage ? group : .german
+        applyLanguageGroup(selected, coreEnabled: isCoreResolversEnabled)
+        NotificationCenter.default.post(name: languageDidChangeNotification, object: selected.rawValue)
+    }
+
+    static func setCoreResolversEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: coreResolversKey)
+        for source in PlaybackSourcePreferenceID.sources(in: .core) {
+            setPlaybackSource(source, enabled: enabled)
+        }
+        // Keep other spoken languages hard-off without resetting Advanced toggles
+        // inside the active language group.
+        let active = activePlaybackLanguageGroup
+        for source in PlaybackSourcePreferenceID.allCases
+        where source.languageGroup != active && source.languageGroup != .core {
+            setPlaybackSource(source, enabled: false)
+        }
+        NotificationCenter.default.post(name: languageDidChangeNotification, object: active.rawValue)
+    }
+
+    /// Preference IDs that belong to the active language, plus Core when that switch is on.
+    static func allowedPreferenceIDs() -> Set<PlaybackSourcePreferenceID> {
+        var allowed = Set(PlaybackSourcePreferenceID.sources(in: activePlaybackLanguageGroup))
+        if isCoreResolversEnabled {
+            allowed.formUnion(PlaybackSourcePreferenceID.sources(in: .core))
+        }
+        return allowed
+    }
+
+    static func isProviderAllowed(providerID: String) -> Bool {
+        guard let preference = PlaybackSourcePreferenceID.allCases.first(where: {
+            $0.matches(providerID: providerID)
+        }) else {
+            return false
+        }
+        return allowedPreferenceIDs().contains(preference) && isPlaybackSourceEnabled(preference)
+    }
+
     static func isPlaybackSourceEnabled(_ source: PlaybackSourcePreferenceID) -> Bool {
         if UserDefaults.standard.object(forKey: source.defaultsKey) == nil {
-            return source.defaultEnabled
+            let allowed = allowedPreferenceIDs().contains(source)
+            return allowed && source.defaultEnabled
         }
         return UserDefaults.standard.bool(forKey: source.defaultsKey)
     }
 
     static func setPlaybackSource(_ source: PlaybackSourcePreferenceID, enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: source.defaultsKey)
+    }
+
+    private static func applyLanguageGroup(
+        _ group: ProviderLanguageGroup,
+        coreEnabled: Bool
+    ) {
+        let selected = group.isSpokenLanguage ? group : .german
+        UserDefaults.standard.set(selected.rawValue, forKey: languageGroupKey)
+        UserDefaults.standard.set(coreEnabled, forKey: coreResolversKey)
+        for source in PlaybackSourcePreferenceID.allCases {
+            let enabled: Bool
+            if source.languageGroup == selected {
+                enabled = true
+            } else if source.languageGroup == .core {
+                enabled = coreEnabled
+            } else {
+                enabled = false
+            }
+            setPlaybackSource(source, enabled: enabled)
+        }
     }
 }

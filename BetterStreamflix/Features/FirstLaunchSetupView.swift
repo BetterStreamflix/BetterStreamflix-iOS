@@ -28,6 +28,10 @@ struct FirstLaunchSetupView: View {
     @State private var providerDomainDraft = ""
     @State private var providerDomainError: String?
     @State private var playbackToggles: [PlaybackSourcePreferenceID: Bool] = [:]
+    @State private var selectedLanguage: ProviderLanguageGroup = AppSetupStore.activePlaybackLanguageGroup
+    @State private var coreEnabled = AppSetupStore.isCoreResolversEnabled
+    @State private var showAdvanced = false
+    @State private var languageConfirmation: String?
 
     private let totalSteps = 3
 
@@ -66,14 +70,27 @@ struct FirstLaunchSetupView: View {
 
                 bottomBar
             }
+
+            if let languageConfirmation {
+                VStack {
+                    Spacer()
+                    Text(languageConfirmation)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.bottom, 88)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .allowsHitTesting(false)
+            }
         }
         .onAppear {
             providerDomainDraft = environment.providerDomain
-            playbackToggles = Dictionary(
-                uniqueKeysWithValues: PlaybackSourcePreferenceID.allCases.map {
-                    ($0, AppSetupStore.isPlaybackSourceEnabled($0))
-                }
-            )
+            selectedLanguage = AppSetupStore.activePlaybackLanguageGroup
+            coreEnabled = AppSetupStore.isCoreResolversEnabled
+            refreshPlaybackToggles()
         }
     }
 
@@ -159,7 +176,7 @@ struct FirstLaunchSetupView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Catalog & sources")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Browsing uses TMDB. Every playback language is available and enabled by default — toggle what you need.")
+                Text("Browsing uses TMDB. Pick one playback language — the player only uses that language’s sources.")
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -175,83 +192,66 @@ struct FirstLaunchSetupView: View {
                     in: RoundedRectangle(cornerRadius: 20, style: .continuous)
                 )
 
-                providerGroupCard(
-                    title: "Core resolvers",
-                    caption: "StreamingCommunity, anime resolvers, and Stremio addons.",
-                    sources: PlaybackSourcePreferenceID.sources(in: .core),
-                    includeDomainField: true
+                PlaybackLanguagePickerGrid(
+                    selected: selectedLanguage,
+                    onSelect: { selectLanguage($0) }
                 )
 
-                ForEach(
-                    [
-                        ProviderLanguageGroup.german,
-                        .english,
-                        .italian,
-                        .spanish,
-                        .french,
-                        .polish,
-                    ],
-                    id: \.self
-                ) { group in
-                    providerGroupCard(
-                        title: group.title,
-                        caption: "Enabled by default. Turn off languages you do not use.",
-                        sources: PlaybackSourcePreferenceID.sources(in: group)
-                    )
+                PlaybackCoreResolversToggle(
+                    isOn: $coreEnabled,
+                    domainDraft: $providerDomainDraft,
+                    domainError: providerDomainError,
+                    onChanged: { enabled in
+                        coreEnabled = enabled
+                        AppSetupStore.setCoreResolversEnabled(enabled)
+                        refreshPlaybackToggles()
+                        DesignTokens.Haptics.selection()
+                    }
+                )
+
+                DisclosureGroup(isExpanded: $showAdvanced) {
+                    Text("Fine-tune providers inside \(selectedLanguage.title). Other languages stay off.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                    ForEach(PlaybackSourcePreferenceID.sources(in: selectedLanguage)) { source in
+                        Toggle(isOn: playbackBinding(for: source)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.title)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(source.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tint(environment.theme.accent)
+                    }
+                    if coreEnabled {
+                        ForEach(PlaybackSourcePreferenceID.sources(in: .core)) { source in
+                            Toggle(isOn: playbackBinding(for: source)) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(source.title)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(source.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .tint(environment.theme.accent)
+                        }
+                    }
+                } label: {
+                    Text("Advanced")
+                        .font(.headline.weight(.semibold))
                 }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffectWithFallback(
+                    in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                )
             }
             .padding(22)
         }
-    }
-
-    @ViewBuilder
-    private func providerGroupCard(
-        title: String,
-        caption: String?,
-        sources: [PlaybackSourcePreferenceID],
-        includeDomainField: Bool = false,
-        compact: Bool = false
-    ) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 10 : 12) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-            if let caption {
-                Text(caption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if includeDomainField {
-                Text("StreamingCommunity domain")
-                    .font(.subheadline.weight(.semibold))
-                TextField("streamingunity.win", text: $providerDomainDraft)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(AppTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 12))
-                if let providerDomainError {
-                    Text(providerDomainError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-            }
-            ForEach(sources) { source in
-                Toggle(isOn: playbackBinding(for: source)) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(source.title)
-                            .font(.subheadline.weight(.semibold))
-                        Text(source.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .tint(environment.theme.accent)
-            }
-        }
-        .padding(compact ? 12 : 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffectWithFallback(
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
     }
 
     private var bottomBar: some View {
@@ -310,9 +310,40 @@ struct FirstLaunchSetupView: View {
 
     private func playbackBinding(for source: PlaybackSourcePreferenceID) -> Binding<Bool> {
         Binding(
-            get: { playbackToggles[source] ?? source.defaultEnabled },
+            get: { playbackToggles[source] ?? AppSetupStore.isPlaybackSourceEnabled(source) },
             set: { playbackToggles[source] = $0 }
         )
+    }
+
+    private func selectLanguage(_ group: ProviderLanguageGroup) {
+        guard group.isSpokenLanguage else { return }
+        selectedLanguage = group
+        AppSetupStore.setActivePlaybackLanguageGroup(group)
+        refreshPlaybackToggles()
+        DesignTokens.Haptics.primaryAction()
+        presentLanguageConfirmation(group.confirmationMessage)
+    }
+
+    private func refreshPlaybackToggles() {
+        playbackToggles = Dictionary(
+            uniqueKeysWithValues: PlaybackSourcePreferenceID.allCases.map {
+                ($0, AppSetupStore.isPlaybackSourceEnabled($0))
+            }
+        )
+    }
+
+    private func presentLanguageConfirmation(_ message: String) {
+        withAnimation(reduceMotion ? nil : DesignTokens.Motion.toast) {
+            languageConfirmation = message
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(reduceMotion ? nil : DesignTokens.Motion.toast) {
+                if languageConfirmation == message {
+                    languageConfirmation = nil
+                }
+            }
+        }
     }
 
     private func advance() async {
@@ -327,10 +358,12 @@ struct FirstLaunchSetupView: View {
 
     private func finish() async {
         AppSetupStore.catalogSource = .tmdb
-        for source in PlaybackSourcePreferenceID.allCases {
+        AppSetupStore.setActivePlaybackLanguageGroup(selectedLanguage)
+        AppSetupStore.setCoreResolversEnabled(coreEnabled)
+        for source in AppSetupStore.allowedPreferenceIDs() {
             AppSetupStore.setPlaybackSource(
                 source,
-                enabled: playbackToggles[source] ?? source.defaultEnabled
+                enabled: playbackToggles[source] ?? true
             )
         }
         do {
@@ -349,10 +382,15 @@ struct FirstLaunchSetupView: View {
 /// Compact providers panel reused from Settings after first launch.
 struct ProvidersSettingsSection: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var providerDomainDraft = ""
     @State private var providerDomainError: String?
     @State private var showSetup = false
     @State private var playbackToggles: [PlaybackSourcePreferenceID: Bool] = [:]
+    @State private var selectedLanguage: ProviderLanguageGroup = AppSetupStore.activePlaybackLanguageGroup
+    @State private var coreEnabled = AppSetupStore.isCoreResolversEnabled
+    @State private var showAdvanced = false
+    @State private var languageConfirmation: String?
 
     var body: some View {
         Group {
@@ -361,7 +399,7 @@ struct ProvidersSettingsSection: View {
                     Text(AppSetupStore.catalogSource.title)
                         .foregroundStyle(.secondary)
                 }
-                Text("Browsing uses TMDB. All playback languages are equal and enabled by default.")
+                Text("Pick one playback language. The player only uses that language’s sources. TMDB browsing stays independent.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -380,28 +418,55 @@ struct ProvidersSettingsSection: View {
                 }
             }
 
-            Section("Core resolvers") {
-                ForEach(PlaybackSourcePreferenceID.sources(in: .core)) { source in
-                    providerToggle(source)
+            Section {
+                PlaybackLanguagePickerGrid(
+                    selected: selectedLanguage,
+                    onSelect: { selectLanguage($0) },
+                    compact: true
+                )
+                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                .listRowBackground(Color.clear)
+
+                if let languageConfirmation {
+                    Text(languageConfirmation)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(environment.theme.accentBright)
                 }
+            } header: {
+                Text("Playback language")
+            } footer: {
+                Text("Choosing a language enables every provider in that group and disables the others.")
             }
 
-            ForEach(
-                [
-                    ProviderLanguageGroup.german,
-                    .english,
-                    .italian,
-                    .spanish,
-                    .french,
-                    .polish,
-                ],
-                id: \.self
-            ) { group in
-                Section(group.title) {
-                    ForEach(PlaybackSourcePreferenceID.sources(in: group)) { source in
-                        providerToggle(source)
+            Section {
+                Toggle(isOn: coreBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Core / Anime & Stremio")
+                        Text("StreamingCommunity, HiAnime, Anikoto, AnimeIL, and Stremio. Off by default.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
+                .tint(environment.theme.accent)
+            } header: {
+                Text("Optional core")
+            }
+
+            Section {
+                DisclosureGroup(isExpanded: $showAdvanced) {
+                    ForEach(PlaybackSourcePreferenceID.sources(in: selectedLanguage)) { source in
+                        providerToggle(source)
+                    }
+                    if coreEnabled {
+                        ForEach(PlaybackSourcePreferenceID.sources(in: .core)) { source in
+                            providerToggle(source)
+                        }
+                    }
+                } label: {
+                    Text("Advanced · \(selectedLanguage.title)")
+                }
+            } footer: {
+                Text("Advanced toggles apply only within the active language\(coreEnabled ? " and Core" : "").")
             }
 
             Section {
@@ -415,11 +480,9 @@ struct ProvidersSettingsSection: View {
         .listRowBackground(AppTheme.surface)
         .onAppear {
             providerDomainDraft = environment.providerDomain
-            playbackToggles = Dictionary(
-                uniqueKeysWithValues: PlaybackSourcePreferenceID.allCases.map {
-                    ($0, AppSetupStore.isPlaybackSourceEnabled($0))
-                }
-            )
+            selectedLanguage = AppSetupStore.activePlaybackLanguageGroup
+            coreEnabled = AppSetupStore.isCoreResolversEnabled
+            refreshPlaybackToggles()
         }
         .sheet(isPresented: $showSetup) {
             FirstLaunchSetupView(onFinished: { showSetup = false }, allowsSkip: true)
@@ -427,6 +490,18 @@ struct ProvidersSettingsSection: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private var coreBinding: Binding<Bool> {
+        Binding(
+            get: { coreEnabled },
+            set: { enabled in
+                coreEnabled = enabled
+                AppSetupStore.setCoreResolversEnabled(enabled)
+                refreshPlaybackToggles()
+                DesignTokens.Haptics.selection()
+            }
+        )
     }
 
     @ViewBuilder
@@ -452,6 +527,33 @@ struct ProvidersSettingsSection: View {
         )
     }
 
+    private func selectLanguage(_ group: ProviderLanguageGroup) {
+        guard group.isSpokenLanguage else { return }
+        selectedLanguage = group
+        AppSetupStore.setActivePlaybackLanguageGroup(group)
+        refreshPlaybackToggles()
+        DesignTokens.Haptics.primaryAction()
+        withAnimation(reduceMotion ? nil : DesignTokens.Motion.toast) {
+            languageConfirmation = group.confirmationMessage
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            withAnimation(reduceMotion ? nil : DesignTokens.Motion.toast) {
+                if languageConfirmation == group.confirmationMessage {
+                    languageConfirmation = nil
+                }
+            }
+        }
+    }
+
+    private func refreshPlaybackToggles() {
+        playbackToggles = Dictionary(
+            uniqueKeysWithValues: PlaybackSourcePreferenceID.allCases.map {
+                ($0, AppSetupStore.isPlaybackSourceEnabled($0))
+            }
+        )
+    }
+
     private func saveDomain() async {
         do {
             try await environment.applyProviderDomain(providerDomainDraft)
@@ -460,5 +562,109 @@ struct ProvidersSettingsSection: View {
         } catch {
             providerDomainError = "Enter a valid hostname like streamingunity.win"
         }
+    }
+}
+
+struct PlaybackLanguagePickerGrid: View {
+    @EnvironmentObject private var environment: AppEnvironment
+
+    let selected: ProviderLanguageGroup
+    let onSelect: (ProviderLanguageGroup) -> Void
+    var compact: Bool = false
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(ProviderLanguageGroup.spokenLanguages) { group in
+                Button {
+                    onSelect(group)
+                } label: {
+                    VStack(alignment: .leading, spacing: compact ? 6 : 10) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(group.flagEmoji)
+                                .font(compact ? .title3 : .title2)
+                            Spacer(minLength: 0)
+                            if selected == group {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(environment.theme.accentBright)
+                            }
+                        }
+                        Text(group.title)
+                            .font((compact ? Font.subheadline : Font.headline).weight(.semibold))
+                            .foregroundStyle(AppTheme.primaryText)
+                        Text("\(group.providerCount) providers")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(compact ? 12 : 14)
+                    .frame(maxWidth: .infinity, minHeight: compact ? 88 : 108, alignment: .topLeading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(selected == group ? environment.theme.accent.opacity(0.18) : AppTheme.elevatedSurface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(
+                                selected == group ? environment.theme.accentBright.opacity(0.9) : Color.clear,
+                                lineWidth: 1.5
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected == group ? .isSelected : [])
+                .accessibilityLabel("\(group.title), \(group.providerCount) providers")
+            }
+        }
+    }
+}
+
+struct PlaybackCoreResolversToggle: View {
+    @EnvironmentObject private var environment: AppEnvironment
+
+    @Binding var isOn: Bool
+    @Binding var domainDraft: String
+    var domainError: String?
+    var onChanged: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: Binding(
+                get: { isOn },
+                set: { onChanged($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Core / Anime & Stremio")
+                        .font(.headline.weight(.semibold))
+                    Text("Optional add-on. Off by default so Deutsch means German VOD only.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tint(environment.theme.accent)
+
+            if isOn {
+                Text("StreamingCommunity domain")
+                    .font(.subheadline.weight(.semibold))
+                TextField("streamingunity.win", text: $domainDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(AppTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 12))
+                if let domainError {
+                    Text(domainError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffectWithFallback(
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
     }
 }

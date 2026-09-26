@@ -7,6 +7,9 @@ struct MoreView: View {
     @State private var isCheckingForUpdates = false
     @State private var updateCheckResult: UpdateCheckResult?
     @State private var showCredits = false
+    @State private var showLanguagePicker = false
+    @State private var playbackLanguage = AppSetupStore.activePlaybackLanguageGroup
+    @State private var languageConfirmation: String?
     var onOpenSearch: (() -> Void)? = nil
 
     var body: some View {
@@ -22,6 +25,14 @@ struct MoreView: View {
                             systemImage: "magnifyingglass"
                         ) {
                             onOpenSearch?()
+                        }
+                        Divider().opacity(0.35)
+                        hubRow(
+                            title: "Playback language",
+                            subtitle: "\(playbackLanguage.flagEmoji) \(playbackLanguage.title) · \(playbackLanguage.providerCount) providers",
+                            systemImage: "globe"
+                        ) {
+                            showLanguagePicker = true
                         }
                         Divider().opacity(0.35)
                         hubRow(
@@ -41,6 +52,14 @@ struct MoreView: View {
                         }
                     }
                     .padding(.horizontal, 20)
+
+                    if let languageConfirmation {
+                        Text(languageConfirmation)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(environment.theme.accentBright)
+                            .padding(.horizontal, 24)
+                            .transition(.opacity)
+                    }
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Support")
@@ -136,6 +155,51 @@ struct MoreView: View {
                 CreditsSheet()
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showLanguagePicker) {
+                NavigationStack {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("The player only uses sources from the language you pick.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            PlaybackLanguagePickerGrid(
+                                selected: playbackLanguage,
+                                onSelect: { group in
+                                    playbackLanguage = group
+                                    AppSetupStore.setActivePlaybackLanguageGroup(group)
+                                    DesignTokens.Haptics.primaryAction()
+                                    languageConfirmation = group.confirmationMessage
+                                    showLanguagePicker = false
+                                    Task {
+                                        try? await Task.sleep(for: .seconds(1.8))
+                                        if languageConfirmation == group.confirmationMessage {
+                                            languageConfirmation = nil
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                        .padding(20)
+                    }
+                    .background { AppScreenBackground() }
+                    .navigationTitle("Playback language")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showLanguagePicker = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .environmentObject(environment)
+            }
+            .onAppear {
+                playbackLanguage = AppSetupStore.activePlaybackLanguageGroup
+            }
+            .onReceive(NotificationCenter.default.publisher(for: AppSetupStore.languageDidChangeNotification)) { _ in
+                playbackLanguage = AppSetupStore.activePlaybackLanguageGroup
             }
         }
     }

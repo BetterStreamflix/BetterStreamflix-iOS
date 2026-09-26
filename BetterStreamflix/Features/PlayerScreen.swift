@@ -1185,7 +1185,8 @@ struct PlayerScreen: View {
                     Task {
                         await model.load(environment: environment,
                             enabledSubtitleProviderIDs: enabledSubtitleProviderIDs,
-                            audioLanguage: animeAudioLanguage, backupAudioLanguage: animeBackupAudioLanguage,
+                            audioLanguage: discoveryAudioLanguage,
+                            backupAudioLanguage: discoveryBackupAudioLanguage,
                             qualityHeight: defaultQualityHeight)
                     }
                 } else { session.retryPlayback() }
@@ -1299,8 +1300,21 @@ struct PlayerScreen: View {
             library.markPlaybackStarted(request: model.request)
             await model.load(environment: environment,
                 enabledSubtitleProviderIDs: enabledSubtitleProviderIDs,
-                audioLanguage: animeAudioLanguage, backupAudioLanguage: animeBackupAudioLanguage,
+                audioLanguage: discoveryAudioLanguage,
+                backupAudioLanguage: discoveryBackupAudioLanguage,
                 qualityHeight: defaultQualityHeight)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppSetupStore.languageDidChangeNotification)) { _ in
+            Task {
+                await model.load(
+                    environment: environment,
+                    enabledSubtitleProviderIDs: enabledSubtitleProviderIDs,
+                    audioLanguage: discoveryAudioLanguage,
+                    backupAudioLanguage: discoveryBackupAudioLanguage,
+                    qualityHeight: defaultQualityHeight,
+                    force: true
+                )
+            }
         }
         .task(id: model.sourceRevision) {
             guard let source = model.source else { return }
@@ -1887,7 +1901,8 @@ struct PlayerScreen: View {
         episodeLoadTask = Task {
             let loaded = await model.play(request, environment: environment,
                 enabledSubtitleProviderIDs: enabledSubtitleProviderIDs,
-                audioLanguage: animeAudioLanguage, backupAudioLanguage: animeBackupAudioLanguage,
+                audioLanguage: discoveryAudioLanguage,
+                backupAudioLanguage: discoveryBackupAudioLanguage,
                 qualityHeight: defaultQualityHeight)
 
             guard !Task.isCancelled else { return }
@@ -1975,6 +1990,18 @@ struct PlayerScreen: View {
         }
 
         return providers
+    }
+
+    /// Discovery ranks by the active playback language group, not anime-only AppStorage.
+    private var discoveryAudioLanguage: String {
+        AppSetupStore.activePlaybackLanguageGroup.primaryAudioCode
+    }
+
+    private var discoveryBackupAudioLanguage: String {
+        if AppSetupStore.isCoreResolversEnabled {
+            return animeBackupAudioLanguage
+        }
+        return animeAudioLanguage == discoveryAudioLanguage ? "" : animeAudioLanguage
     }
 
     private var playerOrientation: PlayerOrientationPreference {

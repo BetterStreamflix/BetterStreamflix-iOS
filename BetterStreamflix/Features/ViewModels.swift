@@ -532,7 +532,19 @@ final class PlayerViewModel: ObservableObject {
         failedSources = []
         refreshedSources = []
         refreshedURLs = []
-        rememberedSource = environment.library.sourcePreference(for: request)
+        if force {
+            discovery.cancel()
+            source = nil
+            streams = []
+            selectedSourceID = nil
+            isSearching = true
+        }
+        var remembered = environment.library.sourcePreference(for: request)
+        if let rememberedPreference = remembered,
+           !AppSetupStore.isProviderAllowed(providerID: rememberedPreference.providerID) {
+            remembered = nil
+        }
+        rememberedSource = remembered
         policy = StreamSelectionPolicy(preference: rememberedSource, audioLanguage: audioLanguage,
             backupAudioLanguage: backupAudioLanguage, qualityHeight: qualityHeight)
         defer { if operation == token { isLoading = false } }
@@ -578,7 +590,15 @@ final class PlayerViewModel: ObservableObject {
                 "SUBTITLE PERF video source PUBLISHED content=\(playbackRequest.contentID)"
             )
         } catch where error.isCancellation { }
-        catch { if operation == token { errorMessage = error.localizedDescription } }
+        catch {
+            guard operation == token else { return }
+            if let appError = error as? AppError, case .noStream = appError {
+                let language = AppSetupStore.activePlaybackLanguageGroup.title
+                errorMessage = "No \(language) sources found. Try another language in Settings, or tap Retry."
+            } else {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     @discardableResult
