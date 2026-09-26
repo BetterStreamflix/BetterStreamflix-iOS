@@ -71,42 +71,40 @@ struct ResumeContinueWatchingIntent: AppIntent {
 
 struct BetterStreamflixShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
-        [
-            AppShortcut(
-                intent: OpenStremioHubIntent(),
-                phrases: [
-                    "Open Stremio in \(.applicationName)",
-                    "Browse Stremio with \(.applicationName)",
-                ],
-                shortTitle: "Stremio Hub",
-                systemImageName: "sparkles.tv"
-            ),
-            AppShortcut(
-                intent: OpenDebridSettingsIntent(),
-                phrases: [
-                    "Open Debrid in \(.applicationName)",
-                    "Manage Debrid in \(.applicationName)",
-                ],
-                shortTitle: "Debrid",
-                systemImageName: "key.horizontal"
-            ),
-            AppShortcut(
-                intent: OpenStremioAddonsIntent(),
-                phrases: [
-                    "Manage Stremio plugins in \(.applicationName)",
-                ],
-                shortTitle: "Plugins",
-                systemImageName: "puzzlepiece.extension"
-            ),
-            AppShortcut(
-                intent: ResumeContinueWatchingIntent(),
-                phrases: [
-                    "Resume in \(.applicationName)",
-                    "Continue watching in \(.applicationName)",
-                ],
-                shortTitle: "Resume",
-                systemImageName: "play.fill"
-            ),
-        ]
+        AppShortcut(
+            intent: OpenStremioHubIntent(),
+            phrases: [
+                "Open Stremio in \(.applicationName)",
+                "Browse Stremio with \(.applicationName)",
+            ],
+            shortTitle: "Stremio Hub",
+            systemImageName: "sparkles.tv"
+        )
+        AppShortcut(
+            intent: OpenDebridSettingsIntent(),
+            phrases: [
+                "Open Debrid in \(.applicationName)",
+                "Manage Debrid in \(.applicationName)",
+            ],
+            shortTitle: "Debrid",
+            systemImageName: "key.horizontal"
+        )
+        AppShortcut(
+            intent: OpenStremioAddonsIntent(),
+            phrases: [
+                "Manage Stremio plugins in \(.applicationName)",
+            ],
+            shortTitle: "Plugins",
+            systemImageName: "puzzlepiece.extension"
+        )
+        AppShortcut(
+            intent: ResumeContinueWatchingIntent(),
+            phrases: [
+                "Resume in \(.applicationName)",
+                "Continue watching in \(.applicationName)",
+            ],
+            shortTitle: "Resume",
+            systemImageName: "play.fill"
+        )
     }
 }
