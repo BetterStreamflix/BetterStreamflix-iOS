@@ -671,8 +671,13 @@ actor TMDBClient {
 
         // Prefer a landscape still so the tall Featured frame fills edge-to-edge
         // without portrait letterboxing / strip crops.
-        let artwork = await firstLandscapeHeroImage(from: candidateURLs)
-            ?? await firstLoadableImage(from: candidateURLs, excluding: []).data
+        let landscape = await firstLandscapeHeroImage(from: candidateURLs)
+        let artwork: Data?
+        if let landscape {
+            artwork = landscape
+        } else {
+            artwork = await firstLoadableImage(from: candidateURLs, excluding: []).data
+        }
         return (artwork, await logo)
     }
 
