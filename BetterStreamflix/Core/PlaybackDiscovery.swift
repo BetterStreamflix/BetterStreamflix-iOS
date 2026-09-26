@@ -287,7 +287,7 @@ final class PlaybackDiscovery {
         let budget: Duration = candidate.displayMetadata?.requiresExtendedPrepare == true
             ? .seconds(18)
             : .seconds(3.5)
-        try await withThrowingTaskGroup(of: PlayableStream.self) { group in
+        return try await withThrowingTaskGroup(of: PlayableStream.self) { group in
             group.addTask { try await prepareStream(candidate) }
             group.addTask { try await Task.sleep(for: budget); throw AppError.noStream }
             defer { group.cancelAll() }
