@@ -27,6 +27,7 @@ struct HomeView: View {
                         assets: model.carouselAssets,
                         logosResolved: model.carouselLogosResolved,
                         resolvingKeys: sourceLookup.activeKeys,
+                        freezesForNavigation: selectedDetails != nil,
                         onDetails: openDetails,
                         onToggleWatchlist: toggleWatchlist
                     )
@@ -108,14 +109,18 @@ struct HomeView: View {
     }
 
     private func openDetails(_ trending: TrendingTitle) {
-        selectedDetails = ResolvedMediaItem(
-            media: .tmdbCatalogItem(from: trending),
-            tmdbMetadata: trending
-        )
+        withTransaction(Transaction(animation: reduceMotion ? nil : .smooth(duration: 0.38))) {
+            selectedDetails = ResolvedMediaItem(
+                media: .tmdbCatalogItem(from: trending),
+                tmdbMetadata: trending
+            )
+        }
     }
 
     private func openDetails(_ item: MediaItem) {
-        selectedDetails = ResolvedMediaItem(media: item, tmdbMetadata: nil)
+        withTransaction(Transaction(animation: reduceMotion ? nil : .smooth(duration: 0.38))) {
+            selectedDetails = ResolvedMediaItem(media: item, tmdbMetadata: nil)
+        }
     }
 
     private func toggleWatchlist(_ trending: TrendingTitle) {
@@ -152,6 +157,9 @@ struct TrendingHeroCarousel: View {
     let assets: TMDBCarouselAssets
     let logosResolved: Bool
     let resolvingKeys: Set<String>
+    /// When true, auto-advance and swipe-to-next are paused so the zoom pop
+    /// still morphs back to the Featured slide that opened Details.
+    var freezesForNavigation: Bool = false
     let onDetails: (TrendingTitle) -> Void
     let onToggleWatchlist: (TrendingTitle) -> Void
 
@@ -164,8 +172,11 @@ struct TrendingHeroCarousel: View {
     @State private var titleContentOffset: CGFloat = 0
     @State private var titleContentOpacity = 1.0
     @State private var indicatorDragProgress: CGFloat = 0
+    /// Locked index while Details is open — keeps matchedTransitionSource stable.
+    @State private var frozenIndex: Int? = nil
 
-    private var currentTitle: TrendingTitle { titles[currentIndex % titles.count] }
+    private var activeIndex: Int { frozenIndex ?? currentIndex }
+    private var currentTitle: TrendingTitle { titles[activeIndex % max(titles.count, 1)] }
     private var isCurrentTitleResolving: Bool { resolvingKeys.contains(currentTitle.lookupKey) }
     private var isCurrentTitleInWatchlist: Bool {
         library.watchlist.contains {
@@ -183,9 +194,9 @@ struct TrendingHeroCarousel: View {
                     ForEach(Array(titles.enumerated()), id: \.element.id) { index, title in
                         CenteredHeroArtwork(data: assets.artworkDataByKey[title.lookupKey])
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                            .opacity(index == currentIndex ? 1 : 0)
-                            .animation(crossfadeAnimation, value: currentIndex)
-                            .accessibilityHidden(index != currentIndex)
+                            .opacity(index == activeIndex ? 1 : 0)
+                            .animation(crossfadeAnimation, value: activeIndex)
+                            .accessibilityHidden(index != activeIndex)
                     }
 
                     Color.black
@@ -212,7 +223,7 @@ struct TrendingHeroCarousel: View {
 
                 FeaturedTopChrome(
                     titleCount: titles.count,
-                    currentIndex: currentIndex
+                    currentIndex: activeIndex
                 )
                 .offset(y: metrics.verticalOffset)
 
@@ -222,10 +233,10 @@ struct TrendingHeroCarousel: View {
 
                 CarouselPageIndicator(
                     count: titles.count,
-                    selectedIndex: currentIndex,
+                    selectedIndex: activeIndex,
                     startedAt: slideStartedAt,
                     interval: interval,
-                    isPaused: isInteracting || scenePhase != .active,
+                    isPaused: freezesForNavigation || isInteracting || scenePhase != .active,
                     dragProgress: indicatorDragProgress
                 )
                 .padding(.bottom, 18)
@@ -247,23 +258,43 @@ struct TrendingHeroCarousel: View {
             )
         }
         .task(id: timerVersion) {
-            guard scenePhase == .active, !isInteracting, titles.count > 1 else { return }
+            guard !freezesForNavigation,
+                  scenePhase == .active,
+                  !isInteracting,
+                  titles.count > 1 else { return }
             do {
                 try await Task.sleep(for: .seconds(interval))
             } catch {
                 return
             }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !freezesForNavigation else { return }
             select(index: nextIndex)
         }
         .onChange(of: scenePhase) { _, _ in restartTimer() }
+        .onChange(of: freezesForNavigation) { _, frozen in
+            if frozen {
+                frozenIndex = currentIndex
+                timerVersion += 1
+                isInteracting = false
+            } else {
+                if let frozenIndex {
+                    currentIndex = frozenIndex
+                }
+                frozenIndex = nil
+                restartTimer()
+            }
+        }
         .onChange(of: titles.map(\.id)) { _, _ in
             currentIndex = min(currentIndex, max(titles.count - 1, 0))
+            if let frozenIndex {
+                self.frozenIndex = min(frozenIndex, max(titles.count - 1, 0))
+            }
             restartTimer()
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Trending: \(currentTitle.title)")
         .accessibilityAdjustableAction { direction in
+            guard !freezesForNavigation else { return }
             switch direction {
             case .increment: select(index: nextIndex)
             case .decrement: select(index: previousIndex)
@@ -376,10 +407,14 @@ struct TrendingHeroCarousel: View {
 
     private func openCurrentDetails() {
         guard !isInteracting, !isCurrentTitleResolving else { return }
+        DesignTokens.Haptics.selection()
         transitionSelection?.select(
             titleID: currentTitle.titleTransitionID,
             sourceID: heroTransitionSourceID
         )
+        // Freeze the hero on this slide before the zoom push so interactive
+        // pop still morphs back to the same Featured source.
+        frozenIndex = activeIndex
         onDetails(currentTitle)
     }
 
@@ -388,7 +423,7 @@ struct TrendingHeroCarousel: View {
     }
 
     private func beginHorizontalInteraction() {
-        guard !isInteracting else { return }
+        guard !freezesForNavigation, !isInteracting else { return }
         timerVersion += 1
         isInteracting = true
     }
@@ -402,7 +437,10 @@ struct TrendingHeroCarousel: View {
     }
 
     private func endHorizontalInteraction(translation: CGFloat) {
-        guard isInteracting else { return }
+        guard isInteracting, !freezesForNavigation else {
+            isInteracting = false
+            return
+        }
         if abs(translation) > 34 {
             let direction: CGFloat = translation < 0 ? -1 : 1
             slideStartedAt = Date()
@@ -434,12 +472,14 @@ struct TrendingHeroCarousel: View {
     private var crossfadeAnimation: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.72) }
 
     private func select(index: Int) {
+        guard !freezesForNavigation else { return }
         slideStartedAt = Date()
         withAnimation(crossfadeAnimation) { currentIndex = index }
         timerVersion += 1
     }
 
     private func restartTimer() {
+        guard !freezesForNavigation else { return }
         slideStartedAt = Date()
         timerVersion += 1
     }
@@ -1060,22 +1100,23 @@ struct TrendingHeroUnavailableView: View {
     let message: String
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: DesignTokens.Spacing.sm) {
             Image(systemName: "sparkles.tv")
-                .font(.system(size: 34))
+                .font(.system(size: 32, weight: .light))
+                .foregroundStyle(.secondary)
             Text("Trending on TMDB")
                 .font(DesignTokens.Typography.shelfTitle)
             Text(message)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Text("TMDB is temporarily unavailable. Pull to refresh and try again.")
+            Text("Pull to refresh and try again.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.72))
         }
         .frame(maxWidth: .infinity)
-        .padding(28)
-        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 24))
-        .padding(.horizontal)
+        .padding(DesignTokens.Spacing.xl)
+        .glassEffectWithFallback(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, DesignTokens.Spacing.screenHorizontal)
     }
 }

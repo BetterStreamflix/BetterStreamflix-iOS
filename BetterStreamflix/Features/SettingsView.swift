@@ -420,6 +420,7 @@ struct SettingsView: View {
         .navigationTitle(showsInlineTitle ? "Settings" : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(showsInlineTitle ? .automatic : .hidden, for: .navigationBar)
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbarBackground(showsInlineTitle ? .visible : .hidden, for: .navigationBar)
         .sheet(item: $updateCheckResult) { result in
             UpdateCheckSheet(result: result)

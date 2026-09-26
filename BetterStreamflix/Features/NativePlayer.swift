@@ -1060,11 +1060,17 @@ final class PlayerSession: ObservableObject {
         pendingSourceSwitchRate = nil
         pendingSourceSwitchItem = nil
         isSourceSwitching = false
+        isPreparingPlayback = false
         if resumePrevious, player.currentItem == nil, let previousItem {
             player.replaceCurrentItem(with: previousItem)
         }
         isBuffering = false
-        if shouldResume { player.playImmediately(atRate: rate) }
+        if shouldResume {
+            player.playImmediately(atRate: rate)
+        }
+        // Always recompute chrome state — leaving `.preparing` after a failed
+        // switch kept the "Loading video…" banner up over the error alert.
+        refreshPlaybackState()
     }
 
     private func recordPlaybackRate(_ rate: Float) {
@@ -2714,7 +2720,7 @@ final class PlayerSession: ObservableObject {
         playbackState = .failed
         player.pause()
         playbackErrorMessage =
-            "Couldn't keep this stream playing. Tap Retry to reconnect, Try next source for another mirror, or pick one from Playback Settings."
+            "Couldn't keep this stream playing. Tap Retry to reconnect, or Try next source for another mirror."
         publishNowPlayingInfo()
     }
 

@@ -236,12 +236,17 @@ struct TitleTransitionNamespaceKey: EnvironmentKey {
 }
 
 final class TitleTransitionSelection: ObservableObject, @unchecked Sendable {
-    var titleID: String?
-    var sourceID: String?
+    @Published private(set) var titleID: String?
+    @Published private(set) var sourceID: String?
 
     func select(titleID: String, sourceID: String) {
         self.titleID = titleID
         self.sourceID = sourceID
+    }
+
+    func clear() {
+        titleID = nil
+        sourceID = nil
     }
 }
 
@@ -276,6 +281,7 @@ struct TitleTransitionSourceModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *), !reduceMotion, let namespace {
             content
+                .geometryGroup()
                 .matchedTransitionSource(id: sourceID, in: namespace)
         } else {
             content
@@ -294,9 +300,12 @@ struct TitleNavigationTransitionModifier: ViewModifier {
         if #available(iOS 18.0, *),
            !reduceMotion,
            let namespace,
-           selection?.titleID == id,
-           let sourceID = selection?.sourceID {
-            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+           let selection,
+           selection.titleID == id,
+           let sourceID = selection.sourceID {
+            content
+                .geometryGroup()
+                .navigationTransition(.zoom(sourceID: sourceID, in: namespace))
         } else {
             content
         }
@@ -404,6 +413,34 @@ struct PageTitleTopScrim: View {
         .frame(height: height)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Shared Back + inline title + material navigation chrome used by Actor profiles
+/// and title Detail so both stacks feel identical.
+struct ProfileStackChrome: ViewModifier {
+    let title: String
+
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(.visible, for: .navigationBar)
+            .toolbar(.visible, for: .tabBar)
+            .background {
+                NavigationChromeStabilizer(enablesInteractivePop: true)
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+    }
+}
+
+extension View {
+    func profileStackChrome(title: String) -> some View {
+        modifier(ProfileStackChrome(title: title))
     }
 }
 

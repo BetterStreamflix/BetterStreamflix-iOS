@@ -673,19 +673,27 @@ final class PlayerViewModel: ObservableObject {
             policy.preference = nil
         }
 
-        guard let target =
-            id.flatMap({ id in
-                streams.first { $0.id == id }
-            })
-            ?? policy.best(in: streams)
-        else {
-            return false
+        let hadPreviousSource = source != nil
+        let preferredID = id ?? selectedSourceID
+        var ordered = SourceRecoveryOrder.ordered(
+            selectedSourceID: preferredID,
+            streams: streams,
+            policy: policy,
+            excluding: failedSources
+        )
+        // Explicit user pick always goes first, even if previously marked failed.
+        if let id, let explicit = streams.first(where: { $0.id == id }) {
+            ordered.removeAll { $0.id == id }
+            ordered.insert(explicit, at: 0)
+            failedSources.remove(id)
+        } else if ordered.isEmpty, let fallback = policy.best(in: streams) {
+            ordered = [fallback]
         }
 
+        guard !ordered.isEmpty else { return false }
+
         let token = operation
-
         isSwitching = true
-
         defer {
             if operation == token,
                sourceSelectionGeneration == selectionGeneration {
@@ -693,65 +701,73 @@ final class PlayerViewModel: ObservableObject {
             }
         }
 
-        do {
-            let fresh = try await PlaybackDiscovery.prepare(
-                target.candidate
-            )
+        // Clear any prior open-failure alert so a retry doesn't stack dialogs
+        // on top of the loading banner.
+        errorMessage = nil
 
+        for target in ordered {
             guard operation == token,
                   sourceSelectionGeneration == selectionGeneration,
                   !Task.isCancelled else {
                 return false
             }
 
-            let applied = await apply(
-                fresh,
-                quality
-            )
+            do {
+                let fresh = try await PlaybackDiscovery.prepare(target.candidate)
 
-            guard operation == token,
-                  sourceSelectionGeneration == selectionGeneration,
-                  !Task.isCancelled else {
+                guard operation == token,
+                      sourceSelectionGeneration == selectionGeneration,
+                      !Task.isCancelled else {
+                    return false
+                }
+
+                let applied = await apply(fresh, quality)
+
+                guard operation == token,
+                      sourceSelectionGeneration == selectionGeneration,
+                      !Task.isCancelled else {
+                    return false
+                }
+
+                guard applied else {
+                    failedSources.insert(fresh.id)
+                    continue
+                }
+
+                source = fresh.source
+                selectedSourceID = fresh.id
+                failedSources.remove(fresh.id)
+                refreshedSources.remove(fresh.id)
+
+                if id != nil {
+                    rememberedSource = fresh.candidate.preference
+                    policy.preference = rememberedSource
+                    library.updateSourcePreference(rememberedSource, for: request)
+                }
+
+                errorMessage = nil
+                return true
+            } catch where error.isCancellation {
                 return false
+            } catch {
+                failedSources.insert(target.id)
+                continue
             }
+        }
 
-            guard applied else {
-                throw AppError.noStream
-            }
-
-            source = fresh.source
-            selectedSourceID = fresh.id
-
-            failedSources.remove(fresh.id)
-            refreshedSources.remove(fresh.id)
-
-            if id != nil {
-                rememberedSource =
-                    fresh.candidate.preference
-
-                policy.preference =
-                    rememberedSource
-
-                library.updateSourcePreference(
-                    rememberedSource,
-                    for: request
-                )
-            }
-
-            return true
-        } catch where error.isCancellation {
-            return false
-        } catch {
-            guard operation == token,
-                  sourceSelectionGeneration == selectionGeneration else {
-                return false
-            }
-
-            errorMessage =
-                "This source could not be opened. Playback returned to your previous source."
-
+        guard operation == token,
+              sourceSelectionGeneration == selectionGeneration else {
             return false
         }
+
+        // Keep playback on the previous healthy source when one exists —
+        // a soft banner / Try next source handles UX. Only surface a blocking
+        // alert when there is nothing left to play.
+        if !hadPreviousSource {
+            errorMessage =
+                "Couldn't open a playable source. Tap Retry or Try next source, or pick another from Playback Settings."
+        }
+        return false
     }
 
     func supersedeSourceSelection() {
@@ -959,14 +975,15 @@ final class PlayerViewModel: ObservableObject {
 
 enum SourceRecoveryOrder {
     static func ordered(
-        selectedSourceID: String,
+        selectedSourceID: String?,
         streams: [PlayableStream],
         policy: StreamSelectionPolicy,
         excluding failed: Set<String> = []
     ) -> [PlayableStream] {
         var remaining = streams.filter { !failed.contains($0.id) }
         var result: [PlayableStream] = []
-        if let index = remaining.firstIndex(where: { $0.id == selectedSourceID }) {
+        if let selectedSourceID,
+           let index = remaining.firstIndex(where: { $0.id == selectedSourceID }) {
             result.append(remaining.remove(at: index))
         }
         while let next = policy.best(in: remaining) {

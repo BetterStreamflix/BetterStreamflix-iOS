@@ -75,11 +75,28 @@ extension GermanPlaybackProvider {
                 subtitleKind: hoster.subtitleKind,
                 resolve: {
                     if let custom = hoster.resolve { return try await custom() }
-                    return try await HosterExtractor.resolve(
-                        hoster.url,
-                        referer: hoster.referer ?? fallbackReferer,
-                        serverName: hoster.name
-                    )
+                    do {
+                        return try await HosterExtractor.resolve(
+                            hoster.url,
+                            referer: hoster.referer ?? fallbackReferer,
+                            serverName: hoster.name
+                        )
+                    } catch where error.isCancellation {
+                        throw error
+                    } catch {
+                        // Soften meinecloud / firestream flakiness: expand every
+                        // alternate wrapper host, then take the first healthy mirror.
+                        guard MeinecloudEmbedHelper.isEmbedWrapper(hoster.url) else { throw error }
+                        let mirrors = await MeinecloudEmbedHelper.expand(
+                            hoster.url,
+                            referer: hoster.referer ?? fallbackReferer
+                        ).filter { !MeinecloudEmbedHelper.isEmbedWrapper($0.url) }
+                        guard !mirrors.isEmpty else { throw error }
+                        return try await HosterExtractor.resolveFirst(
+                            mirrors,
+                            referer: hoster.referer ?? fallbackReferer
+                        )
+                    }
                 }
             )
         }

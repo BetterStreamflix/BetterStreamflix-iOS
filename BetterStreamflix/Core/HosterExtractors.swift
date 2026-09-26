@@ -329,8 +329,42 @@ enum MeinecloudEmbedHelper {
     }
 
     static func expand(_ url: URL, referer: URL? = nil) async -> [HosterMirror] {
-        guard let html = try? await HosterHTTP.shared.page(url, referer: referer ?? url) else { return [] }
-        return mirrors(in: html, base: url)
+        for candidate in alternateWrapperURLs(for: url) {
+            guard let html = try? await HosterHTTP.shared.page(candidate, referer: referer ?? candidate) else {
+                continue
+            }
+            let found = mirrors(in: html, base: candidate)
+            if !found.isEmpty { return found }
+        }
+        return []
+    }
+
+    /// meinecloud / devideosrc hop across mirror hosts for the same movie path.
+    static func alternateWrapperURLs(for url: URL) -> [URL] {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = components.host?.lowercased() else {
+            return [url]
+        }
+        let isWrapper = host.contains("meinecloud")
+            || host.contains("devideosrc")
+            || host.contains("firestream")
+        guard isWrapper else { return [url] }
+
+        let alternates = [
+            "meinecloud.click",
+            "meinecloud.to",
+            "meinecloud.net",
+            "devideosrc.com",
+            "devideosrc.net",
+        ]
+        var result: [URL] = [url]
+        var seen = Set([host])
+        for alternate in alternates where seen.insert(alternate).inserted {
+            components.host = alternate
+            components.scheme = "https"
+            if let next = components.url { result.append(next) }
+        }
+        return result
     }
 
     static func hosterDisplayName(for url: URL) -> String {
@@ -370,7 +404,7 @@ enum HosterExtractor {
         serverName: String = "",
         depth: Int = 0
     ) async throws -> PlaybackSource {
-        guard depth < 3, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { throw AppError.noStream }
+        guard depth < 4, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { throw AppError.noStream }
         if let direct = directSource(url, referer: referer) { return direct }
 
         let host = url.hostName?.lowercased() ?? ""
@@ -729,16 +763,30 @@ enum HosterExtractor {
     // MARK: Embed wrappers and generic pages
 
     static func meinecloud(_ link: URL, referer: URL?, depth: Int) async throws -> PlaybackSource {
-        let mirrors = await MeinecloudEmbedHelper.expand(link, referer: referer)
-            .filter { !MeinecloudEmbedHelper.isEmbedWrapper($0.url) }
         var lastError: (any Error)?
-        for mirror in mirrors {
+        for wrapper in MeinecloudEmbedHelper.alternateWrapperURLs(for: link) {
             try Task.checkCancellation()
-            do { return try await resolve(mirror.url, referer: link, serverName: mirror.name, depth: depth + 1) }
-            catch where error.isCancellation { throw error }
-            catch { lastError = error }
+            let mirrors = await MeinecloudEmbedHelper.expand(wrapper, referer: referer ?? link)
+                .filter { !MeinecloudEmbedHelper.isEmbedWrapper($0.url) }
+            for mirror in mirrors {
+                try Task.checkCancellation()
+                do {
+                    return try await resolve(
+                        mirror.url,
+                        referer: wrapper,
+                        serverName: mirror.name,
+                        depth: depth + 1
+                    )
+                } catch where error.isCancellation {
+                    throw error
+                } catch {
+                    lastError = error
+                }
+            }
+            if let packed = try? await generic(wrapper, referer: referer, depth: depth + 1) {
+                return packed
+            }
         }
-        if let packed = try? await generic(link, referer: referer, depth: depth + 1) { return packed }
         throw lastError ?? AppError.noStream
     }
 

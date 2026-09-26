@@ -8,8 +8,8 @@ struct DetailsView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var sourceLookup: SourceLookupCoordinator
     @EnvironmentObject private var watchlistToast: WatchlistToastStore
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.titleTransitionSelection) private var titleTransitionSelection
     @StateObject private var model: DetailsViewModel
     @State private var selectedSeasonNumber: Int?
     @State private var playback: PlaybackRequest?
@@ -123,21 +123,10 @@ struct DetailsView: View {
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .coordinateSpace(name: HeroArtworkScrollEffect.detailsCoordinateSpace)
         .background { AppScreenBackground() }
-        .ignoresSafeArea(edges: .top)
         .modifier(HeroViewportModifier())
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
-        .background {
-            NavigationChromeStabilizer(enablesInteractivePop: true)
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-        .overlay(alignment: .top) {
-            detailChromeOverlay
-        }
+        // Same Back + inline title + material chrome as Actor / PersonProfileView.
+        .profileStackChrome(title: model.item.title)
+        .titleNavigationTransition(id: model.item.artworkIdentityKey)
         .overlay { if model.isLoading && model.item.overview == nil { ProgressView() } }
         .overlay {
             if let episodeInfo {
@@ -229,7 +218,17 @@ struct DetailsView: View {
             }
         }
         .errorAlert($model.errorMessage)
-        .titleNavigationTransition(id: model.item.artworkIdentityKey)
+        .onDisappear {
+            // Hold selection through the interactive-pop morph, then clear so the
+            // next Featured / shelf open can zoom from a fresh source.
+            let selection = titleTransitionSelection
+            let titleID = model.item.artworkIdentityKey
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(480))
+                guard selection?.titleID == titleID else { return }
+                selection?.clear()
+            }
+        }
     }
 
     @ViewBuilder
@@ -330,81 +329,10 @@ struct DetailsView: View {
         }
     }
 
-    private var showsCompactHeader: Bool {
-        -heroScrollMinY > HeroArtworkScrollEffect.compactHeaderRevealDistance
-    }
-
-    @ViewBuilder
-    private var detailChromeOverlay: some View {
-        // Flush under the status bar / Dynamic Island: overlay ignores top safe
-        // area, then pads a slim control row by the real inset only once.
-        let topInset = ScreenMetrics.topSafeAreaInset
-        let rowHeight: CGFloat = 40
-        let leading: CGFloat = 12
-
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                DetailBackControl(action: { dismiss() })
-                if showsCompactHeader {
-                    Spacer(minLength: 8)
-                    compactHeaderTitle
-                        .frame(maxWidth: 240)
-                    Spacer(minLength: 8)
-                    Color.clear
-                        .frame(width: DetailBackControl.size, height: DetailBackControl.size)
-                } else {
-                    Spacer(minLength: 0)
-                }
-            }
-            .padding(.horizontal, leading)
-            .frame(height: rowHeight, alignment: .center)
-            .frame(maxWidth: .infinity, alignment: .top)
-        }
-        .padding(.top, topInset)
-        .frame(maxWidth: .infinity, alignment: .top)
-        .background(alignment: .top) {
-            if showsCompactHeader {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .opacity(0.92)
-                    .overlay(alignment: .bottom) {
-                        LinearGradient(
-                            colors: [.white.opacity(0.14), .white.opacity(0.02)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        .frame(height: 0.5)
-                    }
-                    .frame(height: topInset + rowHeight)
-                    .frame(maxWidth: .infinity)
-                    .ignoresSafeArea(edges: .top)
-            }
-        }
-        .ignoresSafeArea(edges: .top)
-        .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactHeader)
-    }
-
-    @ViewBuilder
-    private var compactHeaderTitle: some View {
-        TitleLogoView(
-            title: model.item.title,
-            logoData: tmdbTitleLogoData,
-            showsFallback: isTitleLogoResolved,
-            maximumLogoWidth: 196,
-            maximumLogoHeight: 26
-        ) {
-            Text(model.item.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.95))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-        }
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
     private var detailsTitle: some View {
         // Logo XOR text — never both. Prefer the TMDB title treatment logo over
         // baked-in poster typography (hero art prefers textless sources when a logo exists).
+        // Nav bar carries the Actor-style inline title; this remains the in-page brand mark.
         TitleLogoView(
             title: model.item.title,
             logoData: tmdbTitleLogoData,
@@ -422,9 +350,7 @@ struct DetailsView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .shadow(color: .black.opacity(0.55), radius: 12, y: 4)
         .accessibilityAddTraits(.isHeader)
-        .opacity(showsCompactHeader ? 0 : 1)
-        .accessibilityHidden(showsCompactHeader)
-        .animation(reduceMotion ? nil : DesignTokens.Motion.compactHeader, value: showsCompactHeader)
+        .accessibilityHidden(true)
     }
 
     private func loadTitleLogo(for item: MediaItem, metadata: TrendingTitle?) async -> Data? {
@@ -771,34 +697,6 @@ private struct DetailsHeroScrollOffsetKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
-    }
-}
-
-struct DetailBackControl: View {
-    static let size: CGFloat = 36
-
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: Self.size, height: Self.size)
-                .contentShape(Circle())
-                .background {
-                    Circle()
-                        .fill(.black.opacity(0.22))
-                }
-                .glassEffectWithFallback(in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(.white.opacity(0.22), lineWidth: 0.7)
-                }
-                .shadow(color: .black.opacity(0.28), radius: 6, y: 1)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Back")
     }
 }
 

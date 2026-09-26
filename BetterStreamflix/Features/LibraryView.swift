@@ -245,12 +245,12 @@ struct LibraryEmptyState: View {
     let systemImage: String
 
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer(minLength: 48)
+        VStack(spacing: DesignTokens.Spacing.md) {
+            Spacer(minLength: 56)
             Image(systemName: systemImage)
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(AppTheme.primaryText.opacity(0.55))
-                .frame(width: 88, height: 88)
+                .frame(width: 84, height: 84)
                 .glassEffectWithFallback(in: Circle())
                 .accessibilityHidden(true)
             Text(title)
@@ -260,7 +260,7 @@ struct LibraryEmptyState: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 36)
+                .padding(.horizontal, 40)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -1153,7 +1153,7 @@ struct SubtitleStudioPlaybackControls: View {
 enum SourceSwitchStatus: Equatable {
     case switching(String)
     case succeeded(String)
-    case failed
+    case failed(String)
 
     var title: String {
         switch self {
@@ -1162,17 +1162,16 @@ enum SourceSwitchStatus: Equatable {
         case .succeeded:
             return "Source switched"
         case .failed:
-            return "Couldn't switch source"
+            return "Couldn't open source"
         }
     }
 
     var subtitle: String {
         switch self {
         case .switching(let source),
-             .succeeded(let source):
+             .succeeded(let source),
+             .failed(let source):
             return source
-        case .failed:
-            return "Continuing previous source"
         }
     }
 
@@ -1189,6 +1188,11 @@ enum SourceSwitchStatus: Equatable {
 
     var isLoading: Bool {
         if case .switching = self { return true }
+        return false
+    }
+
+    var isFailed: Bool {
+        if case .failed = self { return true }
         return false
     }
 }
@@ -1421,11 +1425,15 @@ struct PlayerScreen: View {
                         )
 
                         withAnimation {
-                            sourceSwitchStatus = .failed
+                            sourceSwitchStatus = .failed(
+                                model.source == nil
+                                    ? "Try next source or pick another from Playback Settings"
+                                    : "Continued previous · Try next source from Playback Settings"
+                            )
                         }
 
                         try? await Task.sleep(
-                            for: .seconds(2)
+                            for: .seconds(2.4)
                         )
 
                         guard !Task.isCancelled,
@@ -1467,13 +1475,57 @@ struct PlayerScreen: View {
                 } else { session.retryPlayback() }
             },
             onTryNextSource: {
+                // Skip the current mirror and open the next healthy candidate.
+                // Soft banner only — never a dead-end OK alert.
                 model.resetRecovery()
-                Task {
+                model.supersedeSourceSelection()
+                session.supersedeSourceSwitch()
+                sourceSwitchTask?.cancel()
+                let requestID = UUID()
+                sourceSwitchRequestID = requestID
+                withAnimation {
+                    sourceSwitchStatus = .switching("Next available source")
+                }
+                saveProgress()
+                session.beginSourceSwitch()
+                sourceSwitchTask = Task {
                     let recovered = await model.recover { stream in
-                        await session.switchSource(stream, externalSubtitles: model.allSubtitles)
+                        guard !Task.isCancelled,
+                              sourceSwitchRequestID == requestID else {
+                            return false
+                        }
+                        return await session.switchSource(
+                            stream,
+                            externalSubtitles: model.allSubtitles
+                        )
                     }
-                    if !recovered {
-                        session.retryPlayback()
+                    guard !Task.isCancelled,
+                          sourceSwitchRequestID == requestID else { return }
+                    if recovered {
+                        withAnimation {
+                            let name = model.streams.first {
+                                $0.id == model.selectedSourceID
+                            }?.candidate.providerName ?? "Source"
+                            sourceSwitchStatus = .succeeded(name)
+                        }
+                        try? await Task.sleep(for: .seconds(1.4))
+                        guard !Task.isCancelled,
+                              sourceSwitchRequestID == requestID else { return }
+                        withAnimation { sourceSwitchStatus = nil }
+                    } else {
+                        session.cancelSourceSwitch(resumePrevious: true)
+                        withAnimation {
+                            sourceSwitchStatus = .failed(
+                                "No other sources worked — pick one from Playback Settings"
+                            )
+                        }
+                        try? await Task.sleep(for: .seconds(2.4))
+                        guard !Task.isCancelled,
+                              sourceSwitchRequestID == requestID else { return }
+                        withAnimation { sourceSwitchStatus = nil }
+                    }
+                    if sourceSwitchRequestID == requestID {
+                        sourceSwitchTask = nil
                     }
                 }
             },
@@ -1517,7 +1569,8 @@ struct PlayerScreen: View {
                         .combined(with: .opacity)
                 )
                 .zIndex(100)
-            } else if model.isLoading
+            } else if model.errorMessage == nil,
+                      model.isLoading
                         || session.playbackState == .preparing
                         || session.playbackState == .recovering {
                 playbackStatusOverlay(
@@ -1771,8 +1824,8 @@ struct PlayerScreen: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .errorAlert(Binding(get: { model.source == nil ? nil : model.errorMessage },
-            set: { model.errorMessage = $0 }))
+        // Source open failures use the soft top banner + in-player Retry / Try next.
+        // A modal OK alert left loading chrome stuck and was a dead end.
     }
 
     private func cancelPendingSourceSwitch() {
@@ -1941,7 +1994,7 @@ struct PlayerScreen: View {
             subtitle: status.subtitle,
             isLoading: status.isLoading,
             systemImage: status.systemImage,
-            accentColor: status == .failed ? .orange : .green,
+            accentColor: status.isFailed ? .orange : .green,
             cancelAccessibilityLabel: "Cancel source switch",
             onCancel: {
                 if case .switching = status {
