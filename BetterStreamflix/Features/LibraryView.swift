@@ -9,12 +9,15 @@ struct LibraryView: View {
     @State private var playback: PlaybackRequest?
     @State private var segment: LibrarySegment = .continueWatching
     @State private var sortNewestFirst = true
+    @State private var newListName = ""
+    @State private var showCreateList = false
     /// When pushed from More, use the system navigation chrome instead of the large page title.
     var showsInlineTitle: Bool = false
 
     private enum LibrarySegment: String, CaseIterable, Identifiable {
         case continueWatching = "Continue"
         case watchlist = "Watchlist"
+        case lists = "Lists"
         case watched = "Watched"
 
         var id: String { rawValue }
@@ -23,6 +26,7 @@ struct LibraryView: View {
             switch self {
             case .continueWatching: "Continue Watching"
             case .watchlist: "Watchlist"
+            case .lists: "Lists"
             case .watched: "Watched"
             }
         }
@@ -71,6 +75,8 @@ struct LibraryView: View {
                     continueWatchingContent
                 case .watchlist:
                     watchlistContent
+                case .lists:
+                    listsContent
                 case .watched:
                     watchedContent
                 }
@@ -83,6 +89,18 @@ struct LibraryView: View {
         }
         .fullScreenCover(item: $playback) { request in
             PlayerScreen(request: request, nextRequest: nil)
+        }
+        .alert("New list", isPresented: $showCreateList) {
+            TextField("Name", text: $newListName)
+            Button("Create") {
+                let created = library.createCustomList(named: newListName)
+                newListName = ""
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                _ = created
+            }
+            Button("Cancel", role: .cancel) { newListName = "" }
+        } message: {
+            Text("Local lists stay on this device — no Trakt sync.")
         }
     }
 
@@ -165,6 +183,87 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, MediaArtworkLayout.gridHorizontalPadding)
                 .padding(.bottom, 28)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var listsContent: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button {
+                    showCreateList = true
+                } label: {
+                    Label("New list", systemImage: "plus")
+                        .font(.caption.weight(.semibold))
+                }
+                .tint(environment.theme.accentBright)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+
+            if library.customLists.isEmpty {
+                LibraryEmptyState(
+                    title: "No custom lists",
+                    message: "Create lists from here or add titles from any detail screen.",
+                    systemImage: "list.bullet.rectangle"
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        ForEach(library.customLists) { list in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(list.name)
+                                        .font(DesignTokens.Typography.shelfTitle)
+                                    Spacer()
+                                    Text("\(list.items.count)")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Button(role: .destructive) {
+                                        library.deleteCustomList(id: list.id)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.caption.weight(.semibold))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 20)
+
+                                if list.items.isEmpty {
+                                    Text("Empty — add titles from Details → Add to list")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 20)
+                                } else {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        LazyHStack(spacing: 12) {
+                                            ForEach(list.items) { item in
+                                                Button {
+                                                    openDetails(item)
+                                                } label: {
+                                                    PosterGridCard(item: item)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .frame(width: 110)
+                                                .contextMenu {
+                                                    Button(role: .destructive) {
+                                                        library.toggleCustomList(item, listID: list.id)
+                                                    } label: {
+                                                        Label("Remove from list", systemImage: "trash")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal, 20)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.bottom, 28)
+                }
             }
         }
     }

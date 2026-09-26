@@ -75,17 +75,27 @@ struct StremioPlayerEmptyActionsView: View {
 struct StremioResolveHUDView: View {
     let diagnostics: StremioResolveDiagnostics
     let isSearching: Bool
+    @ObservedObject private var unrestrict = StremioUnrestrictStatusStore.shared
 
     var body: some View {
-        if isSearching, !diagnostics.perAddon.isEmpty {
+        if isSearching || unrestrict.message != nil {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(diagnostics.perAddon) { row in
-                        Text(row.chipTitle)
+                    if let message = unrestrict.message {
+                        Text(message)
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    if isSearching {
+                        ForEach(diagnostics.perAddon) { row in
+                            Text(row.chipTitle)
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
                     }
                 }
                 .padding(.horizontal, 16)

@@ -1,10 +1,18 @@
 import Foundation
 
+struct LibraryCustomList: Codable, Identifiable, Hashable, Sendable {
+    var id: String
+    var name: String
+    var items: [MediaItem]
+    var updatedAt: Date
+}
+
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published private(set) var watchlist: [MediaItem] = []
     @Published private(set) var progress: [WatchProgress] = []
     @Published private(set) var watchedEpisodes: Set<WatchedEpisode> = []
+    @Published private(set) var customLists: [LibraryCustomList] = []
 
     var completedSeriesRequests: [PlaybackRequest] {
         completedSeriesCheckpoints.values
@@ -70,6 +78,53 @@ final class LibraryStore: ObservableObject {
             watchlist.insert(item, at: 0)
         }
         save(watchlist, to: "watchlist.json")
+    }
+
+    // MARK: - Custom lists
+
+    func createCustomList(named name: String) -> LibraryCustomList {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let list = LibraryCustomList(
+            id: UUID().uuidString,
+            name: trimmed.isEmpty ? "List" : trimmed,
+            items: [],
+            updatedAt: Date()
+        )
+        customLists.insert(list, at: 0)
+        saveCustomLists()
+        return list
+    }
+
+    func renameCustomList(id: String, to name: String) {
+        guard let index = customLists.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        customLists[index].name = trimmed
+        customLists[index].updatedAt = Date()
+        saveCustomLists()
+    }
+
+    func deleteCustomList(id: String) {
+        customLists.removeAll { $0.id == id }
+        saveCustomLists()
+    }
+
+    func isInCustomList(_ item: MediaItem, listID: String) -> Bool {
+        guard let list = customLists.first(where: { $0.id == listID }) else { return false }
+        return list.items.contains { $0.id == item.id && $0.providerID == item.providerID }
+    }
+
+    func toggleCustomList(_ item: MediaItem, listID: String) {
+        guard let index = customLists.firstIndex(where: { $0.id == listID }) else { return }
+        if let itemIndex = customLists[index].items.firstIndex(where: {
+            $0.id == item.id && $0.providerID == item.providerID
+        }) {
+            customLists[index].items.remove(at: itemIndex)
+        } else {
+            customLists[index].items.insert(item, at: 0)
+        }
+        customLists[index].updatedAt = Date()
+        saveCustomLists()
     }
 
     func resumePosition(for request: PlaybackRequest) -> Double {
@@ -374,6 +429,7 @@ final class LibraryStore: ObservableObject {
         watchlist = []
         progress = []
         watchedEpisodes = []
+        customLists = []
         currentSeriesProgressKeys = [:]
         playbackRates = [:]
         sourcePreferences = [:]
@@ -391,6 +447,7 @@ final class LibraryStore: ObservableObject {
                 save(watchlist, to: "watchlist.json")
             }
         }
+        customLists = read([LibraryCustomList].self, from: "custom-lists.json") ?? []
         watchedEpisodes = Set(read([WatchedEpisode].self, from: "watched-episodes.json") ?? [])
         let storedProgress = (read([WatchProgress].self, from: "progress.json") ?? [])
             .sorted { $0.updatedAt > $1.updatedAt }
@@ -516,6 +573,10 @@ final class LibraryStore: ObservableObject {
 
     private func savePlayerZoomPreferences() {
         save(playerZoomedToFillByTitle, to: "player-zoom-preferences.json")
+    }
+
+    private func saveCustomLists() {
+        save(customLists, to: "custom-lists.json")
     }
 
     private func saveSubtitleSyncVersions() {

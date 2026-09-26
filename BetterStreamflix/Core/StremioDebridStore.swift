@@ -594,6 +594,7 @@ final class StremioDebridStore: ObservableObject {
         defer { isValidating = false }
         let status = await StremioDebridAccountClient.validate(service: service, token: token)
         accountStatuses[service] = status
+        StremioPremiumExpiryNotifier.notifyIfNeeded(service: service, status: status)
         return status
     }
 

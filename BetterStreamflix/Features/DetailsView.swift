@@ -101,6 +101,33 @@ struct DetailsView: View {
                         .accessibilityLabel(
                             library.isInWatchlist(model.item) ? "Remove from My List" : "Add to My List"
                         )
+
+                        if !library.customLists.isEmpty {
+                            Menu {
+                                ForEach(library.customLists) { list in
+                                    Button {
+                                        library.toggleCustomList(model.item, listID: list.id)
+                                        DesignTokens.Haptics.selection()
+                                    } label: {
+                                        Label(
+                                            library.isInCustomList(model.item, listID: list.id)
+                                                ? "Remove from \(list.name)"
+                                                : "Add to \(list.name)",
+                                            systemImage: library.isInCustomList(model.item, listID: list.id)
+                                                ? "checkmark"
+                                                : "plus"
+                                        )
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "text.badge.plus")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 40, height: 40)
+                                    .glassEffectWithFallback(in: Circle())
+                            }
+                            .accessibilityLabel("Add to list")
+                        }
                     }
                     .frame(height: 40)
 

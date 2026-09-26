@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 
 /// Resolves torrent `infoHash` streams into HTTP via the user's Debrid API (still no in-app BitTorrent).
 enum StremioDebridMagnetResolver {
@@ -9,6 +10,14 @@ enum StremioDebridMagnetResolver {
         token: String,
         client: any HTTPClientProtocol = HTTPClient()
     ) async throws -> URL {
+        await MainActor.run {
+            StremioUnrestrictStatusStore.shared.begin(service: service)
+        }
+        defer {
+            Task { @MainActor in
+                StremioUnrestrictStatusStore.shared.clear()
+            }
+        }
         let cleanedHash = infoHash
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -409,6 +418,55 @@ enum StremioFavoriteCatalogsStore {
             set.insert(id)
         }
         favorites = set
+    }
+}
+
+/// Live status while Debrid magnet→HTTP resolve is in flight.
+@MainActor
+final class StremioUnrestrictStatusStore: ObservableObject {
+    static let shared = StremioUnrestrictStatusStore()
+    @Published private(set) var message: String?
+
+    func begin(service: StremioDebridService) {
+        message = "Unrestricting via \(service.title)…"
+    }
+
+    func clear() {
+        message = nil
+    }
+}
+
+/// Schedules a one-shot local notification when Debrid premium is near expiry.
+enum StremioPremiumExpiryNotifier {
+    private static let keyPrefix = "stremio.debrid.expiryNotified."
+
+    static func notifyIfNeeded(service: StremioDebridService, status: StremioDebridAccountStatus) {
+        guard status.isPremium, let days = status.premiumDays, days <= 5 else { return }
+        let key = keyPrefix + service.rawValue + ".\(days)"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                center.requestAuthorization(options: [.alert, .sound]) { ok, _ in
+                    cont.resume(returning: ok)
+                }
+            }
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "\(service.title) premium"
+            content.body = days == 0
+                ? "Your \(service.title) premium ends today — renew to keep Debrid streams."
+                : "Your \(service.title) premium has \(days) day\(days == 1 ? "" : "s") left."
+            content.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
+            let request = UNNotificationRequest(
+                identifier: "stremio.debrid.expiry.\(service.rawValue)",
+                content: content,
+                trigger: trigger
+            )
+            try? await center.add(request)
+        }
     }
 }
 
