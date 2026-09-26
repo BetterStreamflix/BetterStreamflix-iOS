@@ -163,3 +163,91 @@ struct StremioSourceFilterSheet: View {
         .presentationDetents([.medium, .large])
     }
 }
+
+/// Top player chrome: toast + resolve HUD + filters chip.
+struct StremioPlayerTopChromeView: View {
+    let toast: String?
+    let diagnostics: StremioResolveDiagnostics
+    let isSearching: Bool
+    let showFiltersChip: Bool
+    let filtersActive: Bool
+    let bingeGroup: String?
+    var onOpenFilters: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if let toast {
+                Text(toast)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, ScreenMetrics.topSafeAreaInset + 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            StremioResolveHUDView(diagnostics: diagnostics, isSearching: isSearching)
+                .padding(.top, toast == nil ? ScreenMetrics.topSafeAreaInset + 56 : 0)
+            if showFiltersChip {
+                HStack(spacing: 8) {
+                    if let bingeGroup {
+                        Text("Continuing \(bingeGroup)")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    Button(action: onOpenFilters) {
+                        Label(
+                            filtersActive ? "Filters · on" : "Filters",
+                            systemImage: "line.3.horizontal.decrease.circle"
+                        )
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+}
+
+/// Bottom player chrome: empty-state actions or empty-filter reset.
+struct StremioPlayerBottomChromeView: View {
+    let showEmptyActions: Bool
+    let showEmptyFilters: Bool
+    let diagnostics: StremioResolveDiagnostics
+    var onOpenFilters: () -> Void
+    var onResetFilters: () -> Void
+
+    var body: some View {
+        Group {
+            if showEmptyActions {
+                StremioPlayerEmptyActionsView(
+                    diagnostics: diagnostics,
+                    onOpenFilters: onOpenFilters
+                )
+                .padding(.horizontal, 20)
+                .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if showEmptyFilters {
+                VStack(spacing: 8) {
+                    Text("No sources match these filters")
+                        .font(.caption.weight(.semibold))
+                    Button(action: onResetFilters) {
+                        Label("Reset filters", systemImage: "arrow.counterclockwise")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(14)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 20)
+                .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
+            }
+        }
+    }
+}

@@ -1786,79 +1786,43 @@ struct PlayerScreen: View {
             session.applySubtitleAppearance()
         }
         .overlay(alignment: .top) {
-            VStack(spacing: 8) {
-                subtitleStudioToastOverlay
-                if model.isSearching {
-                    StremioResolveHUDView(
-                        diagnostics: model.stremioDiagnostics,
-                        isSearching: true
-                    )
-                    .padding(.top, ScreenMetrics.topSafeAreaInset + 56)
-                }
-                if model.source != nil, !model.streams.isEmpty {
-                    HStack(spacing: 8) {
-                        if let group = model.stremioDiagnostics.continuingBingeGroup {
-                            Text("Continuing \(group)")
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.ultraThinMaterial, in: Capsule())
-                        }
-                        Button {
-                            showSourceFilters = true
-                        } label: {
-                            Label(
-                                model.hasActiveSourceFilters ? "Filters · on" : "Filters",
-                                systemImage: "line.3.horizontal.decrease.circle"
-                            )
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.top, 8)
-                }
-            }
+            stremioTopChromeOverlay
         }
         .overlay(alignment: .bottom) {
-            if model.source == nil,
-               model.errorMessage != nil,
-               !model.isLoading {
-                StremioPlayerEmptyActionsView(
-                    diagnostics: model.stremioDiagnostics,
-                    onOpenFilters: {
-                        model.resetSourceFilters()
-                        showSourceFilters = true
-                    }
-                )
-                .padding(.horizontal, 20)
-                .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if model.source != nil,
-                      model.hasActiveSourceFilters,
-                      model.filteredStreams.isEmpty,
-                      !model.streams.isEmpty {
-                VStack(spacing: 8) {
-                    Text("No sources match these filters")
-                        .font(.caption.weight(.semibold))
-                    Button {
-                        model.resetSourceFilters()
-                    } label: {
-                        Label("Reset filters", systemImage: "arrow.counterclockwise")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(14)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.horizontal, 20)
-                .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
-            }
+            stremioBottomChromeOverlay
         }
         // Source open failures use the soft top banner + in-player Retry / Try next.
         // A modal OK alert left loading chrome stuck and was a dead end.
+    }
+
+    @ViewBuilder
+    private var stremioTopChromeOverlay: some View {
+        StremioPlayerTopChromeView(
+            toast: subtitleStudioUnavailableMessage,
+            diagnostics: model.stremioDiagnostics,
+            isSearching: model.isSearching,
+            showFiltersChip: model.source != nil && !model.streams.isEmpty,
+            filtersActive: model.hasActiveSourceFilters,
+            bingeGroup: model.stremioDiagnostics.continuingBingeGroup,
+            onOpenFilters: { showSourceFilters = true }
+        )
+    }
+
+    @ViewBuilder
+    private var stremioBottomChromeOverlay: some View {
+        StremioPlayerBottomChromeView(
+            showEmptyActions: model.source == nil && model.errorMessage != nil && !model.isLoading,
+            showEmptyFilters: model.source != nil
+                && model.hasActiveSourceFilters
+                && model.filteredStreams.isEmpty
+                && !model.streams.isEmpty,
+            diagnostics: model.stremioDiagnostics,
+            onOpenFilters: {
+                model.resetSourceFilters()
+                showSourceFilters = true
+            },
+            onResetFilters: { model.resetSourceFilters() }
+        )
     }
 
     @ViewBuilder
