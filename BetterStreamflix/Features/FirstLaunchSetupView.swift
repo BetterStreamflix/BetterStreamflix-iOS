@@ -446,8 +446,8 @@ struct ProvidersSettingsSection: View {
             Section {
                 Toggle(isOn: coreBinding) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Core / Anime & Stremio")
-                        Text("StreamingCommunity, HiAnime, Anikoto, AnimeIL. Stremio addons can also be enabled independently under Stremio Ecosystem.")
+                        Text("Core / Anime & built-in HTTP")
+                        Text("StreamingCommunity, HiAnime, Anikoto, AnimeIL, and the app-bundled HTTP resolver. Community Stremio plugins are managed separately under Stremio.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -642,9 +642,9 @@ struct PlaybackCoreResolversToggle: View {
                 set: { onChanged($0) }
             )) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Core / Anime & Stremio")
+                    Text("Core / Anime & built-in HTTP")
                         .font(.headline.weight(.semibold))
-                    Text("Optional. Off by default. Stremio addons can also be managed independently under Stremio Ecosystem.")
+                    Text("Optional. Off by default. Community Stremio plugins are managed under Stremio — not this toggle.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

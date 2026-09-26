@@ -133,7 +133,7 @@ struct StremioAddonProviderTests {
         #expect(client.requestedPaths.count == 2)
     }
 
-    @Test("Manifest URL parsing accepts stremio deep links")
+    @Test("Manifest URL parsing accepts stremio deep links and noisy paste")
     func manifestURLParsing() {
         let https = StremioManifestURL.parse("https://v3-cinemeta.strem.io/manifest.json")
         #expect(https?.absoluteString == "https://v3-cinemeta.strem.io/manifest.json")
@@ -141,6 +141,23 @@ struct StremioAddonProviderTests {
         #expect(deep?.scheme == "https")
         let bare = StremioManifestURL.parse("opensubtitles-v3.strem.io")
         #expect(bare?.lastPathComponent == "manifest.json")
+        let noisy = StremioManifestURL.parse("Install this: https://v3-cinemeta.strem.io/manifest.json thanks!")
+        #expect(noisy?.host == "v3-cinemeta.strem.io")
+        let quoted = StremioManifestURL.parse("\"https://torrentio.strem.fun/manifest.json\"")
+        #expect(quoted?.host == "torrentio.strem.fun")
+    }
+
+    @Test("Bundled Pengu hosts are banned from the community plugin list")
+    func bansBundledPengu() {
+        let url = URL(string: "https://pengu.uk/%7B%22auth_token%22%3A%22x%22%7D/manifest.json")!
+        #expect(StremioCuratedCatalog.isBannedPlugin(url: url, manifestID: "com.penguplay"))
+        #expect(!StremioCuratedCatalog.isBannedPlugin(
+            url: URL(string: "https://v3-cinemeta.strem.io/manifest.json")!,
+            manifestID: "com.linvo.cinemeta"
+        ))
+        #expect(StremioCuratedCatalog.seedDefaults.allSatisfy {
+            !StremioCuratedCatalog.isBannedPlugin(url: $0.manifestURL, manifestID: $0.id)
+        })
     }
 
     @Test("Catalog meta previews map into MediaItem with IMDb identity")

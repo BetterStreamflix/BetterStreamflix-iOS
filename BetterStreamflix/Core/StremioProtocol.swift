@@ -504,22 +504,48 @@ extension String {
 }
 
 enum StremioManifestURL {
-    /// Accepts https manifests, bare hosts, and `stremio://` deep links.
+    /// Accepts https manifests, bare hosts, `stremio://` deep links, and noisy paste text.
     static func parse(_ raw: String) -> URL? {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
-        if value.hasPrefix("stremio://") {
-            value = "https://" + value.dropFirst("stremio://".count)
+
+        // Strip wrapping quotes / angle brackets from shared links.
+        if (value.hasPrefix("\"") && value.hasSuffix("\""))
+            || (value.hasPrefix("'") && value.hasSuffix("'"))
+            || (value.hasPrefix("<") && value.hasSuffix(">")) {
+            value = String(value.dropFirst().dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         }
+
+        // Extract the first URL-looking token from a pasted sentence.
+        if let match = value.range(
+            of: #"(?i)(?:stremio|https?)://[^\s<>\"']+"#,
+            options: .regularExpression
+        ) {
+            value = String(value[match])
+        }
+
+        value = value.replacingOccurrences(of: "stremio://", with: "https://", options: [.caseInsensitive])
+
+        // Classic installer form: stremio://addon.url/manifest.json already rewritten.
+        if value.lowercased().hasPrefix("https://add/") {
+            value = "https://" + value.dropFirst("https://add/".count)
+        }
+
         if !value.contains("://") {
             value = "https://" + value
         }
+
+        // Drop trailing punctuation from messengers.
+        while let last = value.last, ".,);]".contains(last) {
+            value.removeLast()
+        }
+
         guard var url = URL(string: value) else { return nil }
         if url.path.isEmpty || url.path == "/" {
             url = url.appendingPathComponent("manifest.json")
         } else if url.lastPathComponent.lowercased() != "manifest.json",
-                  !url.path.contains("/manifest.json") {
-            // Configured addons often end with a config segment before /manifest.json
+                  !url.path.lowercased().contains("/manifest.json") {
             if url.pathExtension.isEmpty {
                 url = url.appendingPathComponent("manifest.json")
             }

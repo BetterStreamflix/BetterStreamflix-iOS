@@ -186,11 +186,11 @@ struct SettingsView: View {
 
                 Section {
                     StremioAddonsSettingsLink()
-                    Text("Install community Stremio addons, browse their catalogs, and resolve streams into the native player. Playback language scrapers stay separate.")
+                    Text("Install remote Stremio community plugins (catalog / stream / subtitles). App-bundled HTTP is separate under Core — never listed as a Stremio plugin.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } header: {
-                    Text("Stremio Ecosystem")
+                    Text("Stremio")
                 }
                 .listRowBackground(AppTheme.surface)
 

@@ -73,6 +73,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
     case anikoto
     case animeIL
     case stremio
+    case bundledHTTP
 
     // German
     case serienstream
@@ -142,7 +143,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
 
     var languageGroup: ProviderLanguageGroup {
         switch self {
-        case .streamingCommunity, .hiAnime, .anikoto, .animeIL, .stremio:
+        case .streamingCommunity, .hiAnime, .anikoto, .animeIL, .stremio, .bundledHTTP:
             return .core
         case .serienstream, .aniworld, .filmpalast, .filmo, .hdfilme,
              .kinoger, .megakino, .einschalten, .moflixStream:
@@ -171,7 +172,8 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .hiAnime: "HiAnime"
         case .anikoto: "Anikoto"
         case .animeIL: "AnimeIL"
-        case .stremio: "Stremio"
+        case .stremio: "Stremio Addons"
+        case .bundledHTTP: "Built-in HTTP"
         case .serienstream: "SerienStream"
         case .aniworld: "AniWorld"
         case .filmpalast: "FilmPalast"
@@ -241,7 +243,8 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
             case .hiAnime: "Anime playback (English / Japanese)"
             case .anikoto: "Alternate anime resolver"
             case .animeIL: "Hebrew anime streams"
-            case .stremio: "Installed Stremio addons (streams & extras)"
+            case .stremio: "Installed community Stremio addons"
+            case .bundledHTTP: "App-bundled direct streams (not a Stremio plugin)"
             default: "Core playback source"
             }
         }
@@ -260,6 +263,7 @@ enum PlaybackSourcePreferenceID: String, CaseIterable, Identifiable {
         case .anikoto: ["anikoto"]
         case .animeIL: ["animeil"]
         case .stremio: ["external-streams", "stremio"]
+        case .bundledHTTP: ["bundled-http-streams"]
         case .moflixStream: ["moflix-stream"]
         default: [rawValue.lowercased()]
         }

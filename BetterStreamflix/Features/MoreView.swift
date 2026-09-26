@@ -52,7 +52,7 @@ struct MoreView: View {
                         }
                         Divider().opacity(0.35)
                         hubRow(
-                            title: "Stremio Addons",
+                            title: "Stremio",
                             subtitle: addonHubSubtitle,
                             systemImage: "puzzlepiece.extension.fill"
                         ) {
@@ -60,7 +60,7 @@ struct MoreView: View {
                         }
                         Divider().opacity(0.35)
                         hubRow(
-                            title: "Manage addons",
+                            title: "Manage plugins",
                             subtitle: "Install, reorder, health",
                             systemImage: "slider.horizontal.3"
                         ) {
@@ -313,7 +313,7 @@ private extension MoreView {
     var addonHubSubtitle: String {
         let store = StremioAddonStore.shared
         let count = store.enabledAddons.count
-        if count == 0 { return "Browse catalogs · install community addons" }
-        return "\(count) enabled · catalogs & streams"
+        if count == 0 { return "Community catalogs & streams" }
+        return "\(count) plugins · catalogs & streams"
     }
 }

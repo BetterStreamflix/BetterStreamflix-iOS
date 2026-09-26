@@ -55,6 +55,7 @@ actor ProviderRegistry {
                 AnimeILPlaybackProvider(),
                 StremioPlaybackProvider(),
             ]
+            + [BundledHTTPPlaybackProvider.make()].compactMap { $0 }
             + GermanPlaybackProviders.all()
             + InternationalPlaybackProviders.all()
         return (streaming + extras).filter { provider in

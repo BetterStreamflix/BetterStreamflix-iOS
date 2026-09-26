@@ -1,20 +1,23 @@
 import Foundation
 
 struct StremioPlaybackProvider: PlaybackProvider {
-    let id = "external-streams"
+    let id: String
     private let client: any HTTPClientProtocol
     private let fixedAddons: [(id: String, name: String, baseURL: URL)]?
 
     init(
         client: any HTTPClientProtocol = HTTPClient(),
-        fixedAddons: [(id: String, name: String, baseURL: URL)]? = nil
+        fixedAddons: [(id: String, name: String, baseURL: URL)]? = nil,
+        providerID: String = "external-streams"
     ) {
+        self.id = providerID
         self.client = client
         self.fixedAddons = fixedAddons
     }
 
     /// Backwards-compatible single-addon initializer used by unit tests.
-    init(client: any HTTPClientProtocol = HTTPClient(), baseURL: URL?) {
+    init(client: any HTTPClientProtocol = HTTPClient(), baseURL: URL?, providerID: String = "external-streams") {
+        self.id = providerID
         self.client = client
         if let baseURL {
             fixedAddons = [("test", "Test", baseURL)]
@@ -26,6 +29,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
     func candidates(for context: PlaybackLookupContext) async throws -> [PlaybackCandidate] {
         let addons = fixedAddons ?? StremioAddonStore.snapshotStreamBaseURLs()
         guard !addons.isEmpty else { return [] }
+        let providerID = id
         return try await withThrowingTaskGroup(of: [PlaybackCandidate].self) { group in
             for addon in addons {
                 group.addTask {
@@ -38,6 +42,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
                             context: context,
                             addonID: addon.id,
                             addonName: addon.name,
+                            providerID: providerID,
                             client: client
                         )
                     }
@@ -60,6 +65,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
         context: PlaybackLookupContext,
         addonID: String,
         addonName: String,
+        providerID: String,
         client: StremioAddonClient
     ) -> PlaybackCandidate? {
         guard stream.ytId == nil,
@@ -85,11 +91,11 @@ struct StremioPlaybackProvider: PlaybackProvider {
             .compactMap { $0 }
             .joined(separator: "|")
         let preference = PlaybackSourcePreference(
-            providerID: "external-streams",
+            providerID: providerID,
             serverName: stableServer,
             audioLanguage: language ?? ""
         )
-        let candidateID = "external-streams:\(stableServer.lowercased())"
+        let candidateID = "\(providerID):\(stableServer.lowercased())"
         let metadata = StreamDisplayMetadata(
             origin: origin,
             quality: quality,
@@ -302,5 +308,18 @@ struct StremioSubtitleProvider: SubtitleProvider {
 
     private static func language(for raw: String?) -> String {
         SubtitleLanguage.canonicalCode(raw) ?? "und"
+    }
+}
+
+/// App-bundled HTTP stream source from Info.plist — never shown as a Stremio community plugin.
+enum BundledHTTPPlaybackProvider {
+    static func make(client: any HTTPClientProtocol = HTTPClient()) -> StremioPlaybackProvider? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "ExternalStreamAddonManifestURL") as? String,
+              let manifest = StremioManifestURL.parse(raw) else { return nil }
+        return StremioPlaybackProvider(
+            client: client,
+            baseURL: manifest.deletingLastPathComponent(),
+            providerID: "bundled-http-streams"
+        )
     }
 }
