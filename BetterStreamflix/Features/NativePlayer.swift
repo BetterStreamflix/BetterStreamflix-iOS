@@ -607,7 +607,7 @@ final class PlayerSession: ObservableObject {
         // Cap playlist inspection so a slow master manifest cannot idle the
         // preparing state before the first frame.
         let qualities: [StreamQuality] = await withTaskGroup(of: [StreamQuality].self) { group in
-            group.addTask { await playlistInspector.availableQualities(for: preparedSource) }
+            group.addTask { await self.playlistInspector.availableQualities(for: preparedSource) }
             group.addTask {
                 try? await Task.sleep(for: .milliseconds(700))
                 return []

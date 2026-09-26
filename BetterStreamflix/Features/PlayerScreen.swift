@@ -1541,44 +1541,9 @@ struct PlayerScreen: View {
             }
         )
         .overlay {
-            Group {
-                if let sourceSwitchStatus {
-                    playbackStatusBanner {
-                        sourceSwitchOverlay(sourceSwitchStatus)
-                    }
-                } else if let pendingEpisodeLoad {
-                    playbackStatusBanner {
-                        playbackStatusOverlay(
-                            title: "Loading next episode…",
-                            subtitle: playbackLoadingSubtitle(
-                                for: pendingEpisodeLoad.request
-                            ),
-                            isLoading: true,
-                            cancelAccessibilityLabel: "Cancel next episode loading",
-                            onCancel: cancelPendingEpisodeLoad
-                        )
-                    }
-                } else if model.errorMessage == nil,
-                          model.isLoading
-                            || session.playbackState == .preparing
-                            || session.playbackState == .recovering {
-                    // Centered — avoids floating over top-center gesture
-                    // feedback / settings chrome.
-                    playbackStatusBanner(centered: true) {
-                        playbackStatusOverlay(
-                            title: reconnectBannerTitle,
-                            subtitle: playbackLoadingSubtitle(
-                                for: model.request
-                            ),
-                            isLoading: true,
-                            cancelAccessibilityLabel: "Close player",
-                            onCancel: closePlayerDuringLoading
-                        )
-                    }
-                }
-            }
-            .zIndex(40)
-            .allowsHitTesting(true)
+            playbackStatusLayer
+                .zIndex(40)
+                .allowsHitTesting(true)
         }
         .overlay(
             alignment: .bottomTrailing
@@ -1973,6 +1938,39 @@ struct PlayerScreen: View {
             session.seekForPlayback(
                 to: segment.end
             )
+        }
+    }
+
+    @ViewBuilder
+    private var playbackStatusLayer: some View {
+        if let sourceSwitchStatus {
+            playbackStatusBanner {
+                sourceSwitchOverlay(sourceSwitchStatus)
+            }
+        } else if let pendingEpisodeLoad {
+            playbackStatusBanner {
+                playbackStatusOverlay(
+                    title: "Loading next episode…",
+                    subtitle: playbackLoadingSubtitle(for: pendingEpisodeLoad.request),
+                    isLoading: true,
+                    cancelAccessibilityLabel: "Cancel next episode loading",
+                    onCancel: cancelPendingEpisodeLoad
+                )
+            }
+        } else if model.errorMessage == nil,
+                  model.isLoading
+                    || session.playbackState == .preparing
+                    || session.playbackState == .recovering {
+            // Centered — avoids floating over top-center gesture / settings chrome.
+            playbackStatusBanner(centered: true) {
+                playbackStatusOverlay(
+                    title: reconnectBannerTitle,
+                    subtitle: playbackLoadingSubtitle(for: model.request),
+                    isLoading: true,
+                    cancelAccessibilityLabel: "Close player",
+                    onCancel: closePlayerDuringLoading
+                )
+            }
         }
     }
 
