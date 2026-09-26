@@ -2,5 +2,6 @@ BetterStreamflix for iOS
 Copyright 2026 BetterStreamflix
 
 This product includes software developed for the BetterStreamflix project and
-prior Streamflix-family work licensed under the Apache License, Version 2.0.
+prior Streamflix-family work licensed under the Apache License, Version 2.0,
+including the public iOS lineage previously published as rtk19/Vela.
 See the repository LICENSE file.
