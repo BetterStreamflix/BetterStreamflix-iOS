@@ -396,6 +396,14 @@ enum ScreenMetrics {
             ?? scenes.first?.windows.first
         return keyWindow?.safeAreaInsets.top ?? 59
     }
+
+    @MainActor
+    static var bottomSafeAreaInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let keyWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+            ?? scenes.first?.windows.first
+        return keyWindow?.safeAreaInsets.bottom ?? 34
+    }
 }
 
 /// Soft scrim behind large page titles / Featured chrome so white type stays
