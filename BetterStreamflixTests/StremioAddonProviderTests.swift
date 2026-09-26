@@ -276,8 +276,109 @@ struct StremioAddonProviderTests {
         #expect(StremioCuratedCatalog.popularPresets.contains {
             StremioCuratedCatalog.isDebridStreamPreset($0) && $0.name == "Torrentio"
         })
+        #expect(StremioCuratedCatalog.popularPresets.contains {
+            StremioCuratedCatalog.isDebridStreamPreset($0) && $0.name.contains("AIOStreams")
+        })
         #expect(StremioCuratedCatalog.popularPresets.first { $0.name == "WatchHub" }
             .map { !StremioCuratedCatalog.isDebridStreamPreset($0) } == true)
+    }
+
+    @Test("Debrid URL builder supports cached-only Torrentio options")
+    func debridCachedInstallOptions() {
+        let base = URL(string: "https://torrentio.strem.fun/manifest.json")!
+        let url = StremioDebridURLBuilder.configuredManifestURL(
+            for: "com.stremio.torrentio.addon",
+            service: .realDebrid,
+            token: "TOKEN123",
+            baseManifestURL: base,
+            options: .fastCached
+        )
+        #expect(url?.absoluteString.contains("realdebrid=TOKEN123") == true)
+        #expect(url?.absoluteString.contains("cached=true") == true)
+        #expect(url?.absoluteString.contains("qualityfilter=") == true)
+    }
+
+    @Test("Bare manifest stripping removes prior debrid config segments")
+    func bareManifestURL() {
+        let configured = URL(string: "https://torrentio.strem.fun/realdebrid=OLD/manifest.json")!
+        let bare = StremioDebridURLBuilder.bareManifestURL(from: configured)
+        #expect(bare.absoluteString == "https://torrentio.strem.fun/manifest.json")
+        #expect(StremioDebridURLBuilder.boundService(in: configured) == .realDebrid)
+    }
+
+    @Test("Cached debrid markers parse from stream titles")
+    func cachedStreamMarkers() throws {
+        let json = Data(#"""
+        {"name":"[RD+] 1080p","title":"Cached · BluRay","url":"https://cdn.example/a.mp4"}
+        """#.utf8)
+        let stream = try JSONDecoder().decode(StremioStream.self, from: json)
+        #expect(stream.looksDebridCached)
+        #expect(stream.playbackKind == .http)
+    }
+
+    @Test("Meta detail decodes cast and trailers")
+    func metaCastTrailers() throws {
+        let json = Data(#"""
+        {"id":"tt0133093","type":"movie","name":"The Matrix","cast":["Keanu Reeves","Carrie-Anne Moss"],
+         "trailers":[{"source":"vKQi3bBA1y8","type":"Trailer"}],"imdb_id":"tt0133093"}
+        """#.utf8)
+        let detail = try JSONDecoder().decode(StremioMetaDetail.self, from: json)
+        let item = detail.asMediaItem(providerID: "stremio:test")
+        #expect(item.cast.count == 2)
+        #expect(detail.primaryTrailerYouTubeID == "vKQi3bBA1y8")
+        #expect(detail.primaryTrailerURL != nil)
+    }
+
+    @Test("Stream selection prefers cached debrid links")
+    func preferCachedRanking() {
+        let cached = PlayableStream(
+            candidate: PlaybackCandidate(
+                id: "a",
+                preference: .init(providerID: "external-streams", serverName: "a", audioLanguage: "en"),
+                providerName: "Cached",
+                subtitleKind: .unknown,
+                displayMetadata: StreamDisplayMetadata(origin: "A", isDebridCached: true),
+                resolve: { PlaybackSource(url: URL(string: "https://a.example/a.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil) }
+            ),
+            source: PlaybackSource(url: URL(string: "https://a.example/a.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil),
+            qualities: []
+        )
+        let uncached = PlayableStream(
+            candidate: PlaybackCandidate(
+                id: "b",
+                preference: .init(providerID: "external-streams", serverName: "b", audioLanguage: "en"),
+                providerName: "Uncached",
+                subtitleKind: .unknown,
+                displayMetadata: StreamDisplayMetadata(origin: "B", isDebridCached: false),
+                resolve: { PlaybackSource(url: URL(string: "https://b.example/b.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil) }
+            ),
+            source: PlaybackSource(url: URL(string: "https://b.example/b.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil),
+            qualities: []
+        )
+        var policy = StreamSelectionPolicy()
+        policy.preferDebridCached = true
+        #expect(policy.best(in: [uncached, cached])?.id == "a")
+    }
+
+    @Test("Diagnostics explain invalid-token when debrid configured but torrents only")
+    func diagnosticsTokenHint() {
+        var diag = StremioResolveDiagnostics()
+        diag.queriedAddons = 2
+        diag.skippedTorrent = 12
+        diag.debridConfigured = true
+        #expect(diag.userFacingSummary.lowercased().contains("validate"))
+        #expect(diag.userFacingSummary.lowercased().contains("rebind"))
+    }
+
+    @Test("Manifest configurationURL resolves relative to base")
+    func configurationURLRelative() throws {
+        let json = Data(#"""
+        {"id":"x","name":"X","resources":["stream"],"types":["movie"],
+         "behaviorHints":{"configurable":true},"catalogs":[]}
+        """#.utf8)
+        let manifest = try JSONDecoder().decode(StremioManifest.self, from: json)
+        let base = URL(string: "https://torrentio.strem.fun/")!
+        #expect(manifest.configurationURL(relativeTo: base)?.absoluteString.hasSuffix("/configure") == true)
     }
 }
 

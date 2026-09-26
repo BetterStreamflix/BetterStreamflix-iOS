@@ -36,6 +36,10 @@ struct StremioPlaybackProvider: PlaybackProvider {
         diagnostics.missingIMDb = context.request.media.imdbID == nil
         diagnostics.queriedAddons = addons.count
 
+        let showID = context.request.media.id
+        let preferredBinge = StremioBingeContinuityStore.preferredGroup(forShowID: showID)
+        diagnostics.continuingBingeGroup = preferredBinge
+
         guard !addons.isEmpty else {
             StremioResolveDiagnosticsStore.update(diagnostics)
             return []
@@ -46,59 +50,116 @@ struct StremioPlaybackProvider: PlaybackProvider {
         let timeout = Self.queryTimeout()
         let budget = Self.maxParallel()
 
+        // Concurrent pool: schedule all eligible addons, but never exceed `budget` in-flight.
         return try await withThrowingTaskGroup(
-            of: (candidates: [PlaybackCandidate], stats: StreamBatchStats, usedTMDb: Bool).self
+            of: (candidates: [PlaybackCandidate], stats: StreamBatchStats, usedTMDb: Bool, progress: StremioAddonResolveProgress).self
         ) { group in
             var scheduled = 0
-            for addon in addons {
-                if addon.requiresConfig,
-                   let manifestURL = addon.manifestURL,
-                   !StremioDebridURLBuilder.looksConfigured(manifestURL) {
-                    diagnostics.skippedNeedsConfig += 1
-                    continue
-                }
-                if let types = addon.types, !types.isEmpty, !types.contains(mediaType) {
-                    continue
-                }
-                if scheduled >= budget { break }
-                scheduled += 1
-                group.addTask {
-                    await Self.queryAddon(
-                        addon: addon,
-                        context: context,
-                        mediaType: mediaType,
-                        providerID: providerID,
-                        client: self.client,
-                        timeout: timeout
-                    )
+            var inFlight = 0
+            var iterator = addons.makeIterator()
+            var progressRows: [StremioAddonResolveProgress] = []
+
+            func enqueueNext() {
+                while inFlight < budget, let addon = iterator.next() {
+                    if addon.requiresConfig,
+                       let manifestURL = addon.manifestURL,
+                       !StremioDebridURLBuilder.looksConfigured(manifestURL) {
+                        diagnostics.skippedNeedsConfig += 1
+                        progressRows.append(
+                            StremioAddonResolveProgress(
+                                addonID: addon.id,
+                                addonName: addon.name,
+                                status: .skippedConfig,
+                                playable: 0,
+                                skippedTorrent: 0,
+                                latencyMS: nil
+                            )
+                        )
+                        continue
+                    }
+                    if let types = addon.types, !types.isEmpty, !types.contains(mediaType) {
+                        continue
+                    }
+                    scheduled += 1
+                    inFlight += 1
+                    group.addTask {
+                        await Self.queryAddon(
+                            addon: addon,
+                            context: context,
+                            mediaType: mediaType,
+                            providerID: providerID,
+                            client: self.client,
+                            timeout: timeout
+                        )
+                    }
                 }
             }
+
+            enqueueNext()
+            diagnostics.queriedAddons = scheduled + diagnostics.skippedNeedsConfig
 
             var merged: [PlaybackCandidate] = []
             var seen = Set<String>()
             var seenURLs = Set<String>()
-            for try await batch in group {
-                diagnostics.playableHTTP += batch.stats.playable
-                diagnostics.skippedTorrent += batch.stats.torrent
-                diagnostics.skippedYouTube += batch.stats.youtube
-                diagnostics.skippedExternal += batch.stats.external
-                diagnostics.skippedUnsupportedFormat += batch.stats.unsupported
-                diagnostics.failedAddons += batch.stats.failed ? 1 : 0
-                if batch.usedTMDb { diagnostics.usedTMDbIdentifier = true }
-                for candidate in batch.candidates {
-                    let urlKey = candidate.id
-                    let normalized = Self.normalizedURLKey(from: candidate)
-                    if let normalized, !seenURLs.insert(normalized).inserted {
-                        continue
+            while inFlight > 0 {
+                if let batch = try await group.next() {
+                    inFlight -= 1
+                    diagnostics.playableHTTP += batch.stats.playable
+                    diagnostics.skippedTorrent += batch.stats.torrent
+                    diagnostics.skippedYouTube += batch.stats.youtube
+                    diagnostics.skippedExternal += batch.stats.external
+                    diagnostics.skippedUnsupportedFormat += batch.stats.unsupported
+                    diagnostics.failedAddons += batch.stats.failed ? 1 : 0
+                    if batch.usedTMDb { diagnostics.usedTMDbIdentifier = true }
+                    for url in batch.stats.externalURLs.prefix(3) {
+                        if diagnostics.sampleExternalURLs.count < 5 {
+                            diagnostics.sampleExternalURLs.append(url)
+                        }
                     }
-                    if seen.insert(urlKey).inserted {
-                        merged.append(candidate)
+                    for yt in batch.stats.youtubeIDs.prefix(3) {
+                        if diagnostics.sampleYouTubeIDs.count < 5 {
+                            diagnostics.sampleYouTubeIDs.append(yt)
+                        }
                     }
+                    progressRows.append(batch.progress)
+                    StremioResolveDiagnosticsStore.publishProgress(progressRows)
+                    for candidate in batch.candidates {
+                        let normalized = Self.normalizedURLKey(from: candidate)
+                        if let normalized, !seenURLs.insert(normalized).inserted {
+                            continue
+                        }
+                        if seen.insert(candidate.id).inserted {
+                            merged.append(candidate)
+                        }
+                    }
+                    enqueueNext()
+                } else {
+                    break
                 }
             }
+
+            // Soft-rank: cached first, then binge continuity, already reflected in StreamSelectionPolicy.
+            merged.sort { lhs, rhs in
+                Self.previewRank(lhs, preferredBinge: preferredBinge)
+                    .lexicographicallyPrecedes(Self.previewRank(rhs, preferredBinge: preferredBinge))
+            }
+
+            diagnostics.perAddon = progressRows
             StremioResolveDiagnosticsStore.update(diagnostics)
             return merged
         }
+    }
+
+    private static func previewRank(_ candidate: PlaybackCandidate, preferredBinge: String?) -> [Int] {
+        let meta = candidate.displayMetadata
+        let cached = meta?.isDebridCached == true ? 0 : 1
+        let binge: Int
+        if let preferredBinge, !preferredBinge.isEmpty {
+            binge = meta?.bingeGroup == preferredBinge ? 0 : 1
+        } else {
+            binge = 0
+        }
+        return [cached, binge]
     }
 
     private static func queryAddon(
@@ -108,8 +169,9 @@ struct StremioPlaybackProvider: PlaybackProvider {
         providerID: String,
         client: any HTTPClientProtocol,
         timeout: TimeInterval
-    ) async -> (candidates: [PlaybackCandidate], stats: StreamBatchStats, usedTMDb: Bool) {
+    ) async -> (candidates: [PlaybackCandidate], stats: StreamBatchStats, usedTMDb: Bool, progress: StremioAddonResolveProgress) {
         var stats = StreamBatchStats()
+        let started = Date()
         let usedTMDb: Bool
         do {
             let identifier = StremioAddonClient.streamIdentifier(
@@ -118,12 +180,30 @@ struct StremioPlaybackProvider: PlaybackProvider {
             )
             usedTMDb = identifier?.hasPrefix("tmdb:") == true
             guard let identifier else {
-                return ([], stats, false)
+                let progress = StremioAddonResolveProgress(
+                    addonID: addon.id,
+                    addonName: addon.name,
+                    status: .empty,
+                    playable: 0,
+                    skippedTorrent: 0,
+                    latencyMS: Int(Date().timeIntervalSince(started) * 1000)
+                )
+                return ([], stats, false, progress)
             }
             if let prefixes = addon.idPrefixes, !prefixes.isEmpty {
-                let ok = prefixes.contains { identifier.hasPrefix($0) || identifier.hasPrefix("tt") && $0.hasPrefix("tt") }
-                if !ok, !(addon.idPrefixes?.contains(where: { identifier.hasPrefix($0) }) ?? true) {
-                    return ([], stats, usedTMDb)
+                let ok = prefixes.contains {
+                    identifier.hasPrefix($0) || (identifier.hasPrefix("tt") && $0.hasPrefix("tt"))
+                }
+                if !ok {
+                    let progress = StremioAddonResolveProgress(
+                        addonID: addon.id,
+                        addonName: addon.name,
+                        status: .empty,
+                        playable: 0,
+                        skippedTorrent: 0,
+                        latencyMS: Int(Date().timeIntervalSince(started) * 1000)
+                    )
+                    return ([], stats, usedTMDb, progress)
                 }
             }
 
@@ -139,8 +219,10 @@ struct StremioPlaybackProvider: PlaybackProvider {
                     stats.torrent += 1
                 case .youtube:
                     stats.youtube += 1
+                    if let yt = stream.ytId { stats.youtubeIDs.append(yt) }
                 case .external:
                     stats.external += 1
+                    if let url = stream.externalUrl { stats.externalURLs.append(url) }
                 case .unsupported:
                     stats.unsupported += 1
                 case .http:
@@ -167,10 +249,27 @@ struct StremioPlaybackProvider: PlaybackProvider {
                     }
                 }
             }
-            return (built, stats, usedTMDb)
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            let progress = StremioAddonResolveProgress(
+                addonID: addon.id,
+                addonName: addon.name,
+                status: stats.playable > 0 ? .ok : (stats.failed ? .failed : .empty),
+                playable: stats.playable,
+                skippedTorrent: stats.torrent,
+                latencyMS: ms
+            )
+            return (built, stats, usedTMDb, progress)
         } catch {
             stats.failed = true
-            return ([], stats, false)
+            let progress = StremioAddonResolveProgress(
+                addonID: addon.id,
+                addonName: addon.name,
+                status: .failed,
+                playable: 0,
+                skippedTorrent: 0,
+                latencyMS: Int(Date().timeIntervalSince(started) * 1000)
+            )
+            return ([], stats, false, progress)
         }
     }
 
@@ -181,6 +280,8 @@ struct StremioPlaybackProvider: PlaybackProvider {
         var external = 0
         var unsupported = 0
         var failed = false
+        var externalURLs: [URL] = []
+        var youtubeIDs: [String] = []
     }
 
     private static func candidate(
@@ -212,7 +313,8 @@ struct StremioPlaybackProvider: PlaybackProvider {
         let audio = capture(#"(?im)^.*Audio:\s*([^,\n\r]+)"#, in: detail)
         let language = languageCode(audio)
         let filename = stream.behaviorHints?.filename
-        let stableServer = [addonID, origin, quality, format, stream.behaviorHints?.bingeGroup ?? "\(order)", filename ?? ""]
+        let bingeGroup = stream.behaviorHints?.bingeGroup
+        let stableServer = [addonID, origin, quality, format, bingeGroup ?? "\(order)", filename ?? ""]
             .compactMap { $0 }
             .joined(separator: "|")
         let preference = PlaybackSourcePreference(
@@ -221,16 +323,38 @@ struct StremioPlaybackProvider: PlaybackProvider {
             audioLanguage: language ?? ""
         )
         let candidateID = "\(providerID):\(stableServer.lowercased())"
-        let labelOrigin = "\(origin) · \(addonName)"
+        let cached = stream.looksDebridCached
+        let labelOrigin = cached
+            ? "\(origin) · \(addonName) · Cached"
+            : "\(origin) · \(addonName)"
         let metadata = StreamDisplayMetadata(
             origin: labelOrigin,
             quality: quality,
             sizeBytes: stream.behaviorHints?.videoSize,
             container: format.uppercased(),
             audioLanguage: audio,
-            releaseType: release
+            releaseType: release,
+            addonName: addonName,
+            addonID: addonID,
+            isDebridCached: cached,
+            bingeGroup: bingeGroup,
+            seedersHint: stream.seedersHint
         )
-        let initial = playbackSource(for: stream, url: url)
+        let embeddedSubs = (stream.subtitles ?? []).compactMap { entry -> SubtitleSource? in
+            guard let subURL = entry.url,
+                  ["http", "https"].contains(subURL.scheme?.lowercased() ?? "") else { return nil }
+            let lang = SubtitleLanguage.canonicalCode(entry.lang) ?? "und"
+            return SubtitleSource(
+                id: "\(providerID):embedded:\(addonID):\(subURL.absoluteString)",
+                providerID: providerID,
+                providerName: "\(addonName) (stream)",
+                label: SubtitleLanguage.displayName(lang),
+                languageCode: lang,
+                url: subURL
+            )
+        }
+        let initial = playbackSource(for: stream, url: url, embeddedSubtitles: embeddedSubs)
+        let showID = context.request.media.id
         let resolver = RefreshingStremioSource(initial: initial) {
             let refreshed = try await client.streams(for: context)
             guard let match = refreshed.enumerated().first(where: { offset, candidate in
@@ -239,21 +363,27 @@ struct StremioPlaybackProvider: PlaybackProvider {
             }), let refreshedURL = match.element.url else {
                 throw AppError.noStream
             }
-            return playbackSource(for: match.element, url: refreshedURL)
+            return playbackSource(for: match.element, url: refreshedURL, embeddedSubtitles: embeddedSubs)
         }
         return PlaybackCandidate(
             id: candidateID,
             preference: preference,
             providerName: labelOrigin,
-            subtitleKind: .unknown,
+            subtitleKind: embeddedSubs.isEmpty ? .unknown : .selectable,
             displayMetadata: metadata,
-            resolve: { try await resolver.resolve() }
+            resolve: {
+                let source = try await resolver.resolve()
+                if let bingeGroup {
+                    StremioBingeContinuityStore.remember(
+                        group: bingeGroup,
+                        forShowID: showID,
+                        addonID: addonID
+                    )
+                }
+                return source
+            }
         )
     }
-
-    /// Non-playable torrent / external streams are counted in diagnostics only (T4 / B2)
-    /// so PlaybackDiscovery never auto-selects them. Empty states point users to Debrid
-    /// or Safari when those were the only results.
 
     private static func stableServerKey(
         for stream: StremioStream,
@@ -278,11 +408,15 @@ struct StremioPlaybackProvider: PlaybackProvider {
             .joined(separator: "|")
     }
 
-    private static func playbackSource(for stream: StremioStream, url: URL) -> PlaybackSource {
+    private static func playbackSource(
+        for stream: StremioStream,
+        url: URL,
+        embeddedSubtitles: [SubtitleSource]
+    ) -> PlaybackSource {
         PlaybackSource(
             url: url,
             headers: stream.behaviorHints?.proxyHeaders?.request ?? [:],
-            subtitles: [],
+            subtitles: embeddedSubtitles,
             preferredPeakBitRate: nil
         )
     }
@@ -325,7 +459,6 @@ struct StremioPlaybackProvider: PlaybackProvider {
     }
 
     private static func normalizedURLKey(from candidate: PlaybackCandidate) -> String? {
-        // Prefer quality+origin fingerprint already in id; also fold by stripping query.
         if candidate.id.contains(":torrent:") || candidate.id.contains(":external:") {
             return candidate.id
         }
@@ -336,7 +469,6 @@ struct StremioPlaybackProvider: PlaybackProvider {
     }
 
     private static func isDebridConfigured() -> Bool {
-        // Nonisolated-safe: read UserDefaults / keychain via a lightweight check.
         StremioDebridService.allCases.contains { service in
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
@@ -438,6 +570,7 @@ struct StremioSubtitleProvider: SubtitleProvider {
     func subtitles(for request: SubtitleLookupRequest) async throws -> [SubtitleSource] {
         let addons = fixedAddons ?? StremioAddonStore.snapshotSubtitleAddons()
         guard !addons.isEmpty else { return [] }
+        let tmdbID = request.tmdbID
         return try await withThrowingTaskGroup(of: [SubtitleSource].self) { group in
             for addon in addons {
                 group.addTask {
@@ -445,7 +578,7 @@ struct StremioSubtitleProvider: SubtitleProvider {
                     let entries = try await client.subtitles(
                         for: request,
                         idPrefixes: addon.idPrefixes,
-                        tmdbID: nil
+                        tmdbID: tmdbID
                     )
                     var seen = Set<String>()
                     return entries.compactMap { entry -> SubtitleSource? in

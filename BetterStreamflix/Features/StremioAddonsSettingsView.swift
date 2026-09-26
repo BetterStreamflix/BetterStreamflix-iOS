@@ -15,6 +15,7 @@ struct StremioAddonsSettingsView: View {
     @State private var showExporter = false
     @State private var showImporter = false
     @State private var exportDocument: StremioAddonListDocument?
+    @State private var configureURL: URL?
     @FocusState private var installFocused: Bool
 
     var body: some View {
@@ -22,6 +23,7 @@ struct StremioAddonsSettingsView: View {
             heroSection
             onboardingSection
             debridSection
+            catalogPrefsSection
             playbackSection
             installSection
             if !store.addons.isEmpty {
@@ -44,6 +46,20 @@ struct StremioAddonsSettingsView: View {
                 installDraft = pending
                 banner = "Ready to install from link"
             }
+        }
+        .sheet(item: Binding(
+            get: { configureURL.map(IdentifiableURL.init) },
+            set: { configureURL = $0?.url }
+        )) { item in
+            StremioConfigureWebView(
+                startURL: item.url,
+                onInstalled: { addon in
+                    configureURL = nil
+                    banner = "Configured \(addon.name)"
+                },
+                onCancel: { configureURL = nil }
+            )
+            .environmentObject(environment)
         }
         .confirmationDialog(
             "Remove addon?",
@@ -136,11 +152,30 @@ struct StremioAddonsSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Text("Torrentio, Comet, and MediaFusion need a debrid token for in-app playback. Torrents alone never play on iOS.")
+            Text("Torrentio, Comet, MediaFusion, and AIOStreams need a debrid token for in-app playback. Torrents alone never play on iOS.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if !store.addonsWithUpdates.isEmpty {
+                Text("\(store.addonsWithUpdates.count) addon update\(store.addonsWithUpdates.count == 1 ? "" : "s") available")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(environment.theme.accentBright)
+            }
         } header: {
             Text("Debrid")
+        }
+        .listRowBackground(AppTheme.surface)
+    }
+
+    private var catalogPrefsSection: some View {
+        Section {
+            Toggle("Show adult catalogs", isOn: Binding(
+                get: { debrid.adultCatalogsOptIn },
+                set: { debrid.adultCatalogsOptIn = $0 }
+            ))
+        } header: {
+            Text("Catalog")
+        } footer: {
+            Text("Adult-marked addons stay hidden from shelves until you opt in.")
         }
         .listRowBackground(AppTheme.surface)
     }
@@ -200,7 +235,7 @@ struct StremioAddonsSettingsView: View {
         } header: {
             Text("Install")
         } footer: {
-            Text("Paste a manifest URL, stremio:// link, betterstreamflix://install?url=…, or a shared installer string. Configurable addons: open Configure, finish setup in Safari, then paste the resulting manifest URL.")
+            Text("Paste a manifest URL, stremio:// link, betterstreamflix://install?url=…, or a shared installer string. Configurable addons: open Configure in-app to finish setup and auto-capture the manifest.")
         }
         .listRowBackground(AppTheme.surface)
     }
@@ -368,11 +403,17 @@ struct StremioAddonsSettingsView: View {
                         Text(addon.name)
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(AppTheme.primaryText)
+                        if addon.updateAvailable {
+                            badge("Update", color: environment.theme.accentBright)
+                        }
                         if addon.isAdult {
                             badge("18+", color: Color(hex: 0xFF6B6B))
                         }
                         if addon.isP2P {
                             badge("P2P", color: Color(hex: 0xF0C24B))
+                        }
+                        if let bound = StremioDebridURLBuilder.boundService(in: addon.manifestURL) {
+                            badge(bound.shortTitle, color: environment.theme.accent)
                         }
                     }
                     Text(addon.capabilitySummary)
@@ -397,9 +438,14 @@ struct StremioAddonsSettingsView: View {
                         }
                     }
                     if addon.needsConfigurationWarning {
-                        Text("Configuration required — open Configure, then reinstall the finished URL.")
+                        Text("Configuration required — open Configure in-app to finish setup.")
                             .font(.caption2)
                             .foregroundStyle(Color(hex: 0xF0C24B))
+                    }
+                    if addon.updateAvailable, let remote = addon.remoteVersion {
+                        Text("Update available: v\(remote)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(environment.theme.accentBright)
                     }
                 }
                 Spacer(minLength: 0)
@@ -427,9 +473,24 @@ struct StremioAddonsSettingsView: View {
                     }
                     .font(.caption.weight(.semibold))
                 }
+                if addon.updateAvailable {
+                    Button("Update") {
+                        Task {
+                            do {
+                                try await store.applyPendingUpdate(for: addon)
+                                banner = "Updated \(addon.name)"
+                            } catch {
+                                banner = error.localizedDescription
+                            }
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                }
                 if let configure = addon.configurePageURL {
-                    Link("Configure", destination: configure)
-                        .font(.caption.weight(.semibold))
+                    Button("Configure") {
+                        configureURL = configure
+                    }
+                    .font(.caption.weight(.semibold))
                 }
                 Spacer()
                 Button("Remove", role: .destructive) {
@@ -733,6 +794,10 @@ enum StremioInstallDeepLink {
     private static let key = "stremio.install.pendingURL"
     static let didReceiveNotification = Notification.Name("stremio.install.didReceive")
 
+    static func peekPending() -> String? {
+        UserDefaults.standard.string(forKey: key)
+    }
+
     static func queue(_ raw: String) {
         UserDefaults.standard.set(raw, forKey: key)
         NotificationCenter.default.post(name: didReceiveNotification, object: raw)
@@ -771,4 +836,9 @@ enum StremioInstallDeepLink {
         }
         return false
     }
+}
+
+private struct IdentifiableURL: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }

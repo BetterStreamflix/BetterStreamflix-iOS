@@ -104,6 +104,24 @@ struct DetailsView: View {
                     }
                     .frame(height: 40)
 
+                    if let trailerURL = model.trailerURL {
+                        Button {
+                            UIApplication.shared.open(trailerURL)
+                        } label: {
+                            Label("Watch trailer", systemImage: "film")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white)
+                        .frame(height: 40)
+                        .glassEffectWithFallback(in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(.white.opacity(0.22), lineWidth: 1)
+                        }
+                    }
+
                     if !model.item.seasons.isEmpty { seasonsSection }
                     if !model.item.cast.isEmpty {
                         Text("Cast")

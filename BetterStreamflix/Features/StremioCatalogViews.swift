@@ -8,7 +8,10 @@ struct StremioCatalogHubView: View {
     @State private var selectedItem: MediaItem?
     @State private var searchDraft = ""
     @State private var isSearching = false
+    @State private var typeFilter: String? = nil
     @FocusState private var searchFocused: Bool
+
+    private let typeTabs = ["movie", "series", "anime", "channel"]
 
     var body: some View {
         ScrollView {
@@ -19,6 +22,9 @@ struct StremioCatalogHubView: View {
                     .padding(.horizontal, 20)
 
                 searchCard
+                    .padding(.horizontal, 20)
+
+                typePicker
                     .padding(.horizontal, 20)
 
                 if !model.searchResults.isEmpty {
@@ -41,7 +47,7 @@ struct StremioCatalogHubView: View {
                             .padding(.horizontal, 20)
                     }
 
-                    ForEach(model.shelves) { shelf in
+                    ForEach(filteredShelves) { shelf in
                         VStack(alignment: .leading, spacing: 8) {
                             MediaShelfView(
                                 title: shelf.title,
@@ -65,10 +71,23 @@ struct StremioCatalogHubView: View {
                                 .disabled(shelf.isLoadingMore)
                             }
                             if let error = shelf.errorMessage {
-                                Text(error)
-                                    .font(.caption2)
-                                    .foregroundStyle(Color(hex: 0xFF6B6B))
-                                    .padding(.horizontal, 20)
+                                HStack {
+                                    Text(error)
+                                        .font(.caption2)
+                                        .foregroundStyle(Color(hex: 0xFF6B6B))
+                                    Button("Retry") {
+                                        Task {
+                                            await model.load(
+                                                store: store,
+                                                client: HTTPClient(),
+                                                force: true,
+                                                adultOK: debrid.adultCatalogsOptIn
+                                            )
+                                        }
+                                    }
+                                    .font(.caption2.weight(.semibold))
+                                }
+                                .padding(.horizontal, 20)
                             }
                         }
                     }
@@ -100,12 +119,50 @@ struct StremioCatalogHubView: View {
         .navigationDestination(item: $selectedItem) { item in
             DetailsView(item: item)
         }
-        .task(id: store.addons.map(\.id) + [model.selectedAddonID ?? "", model.selectedGenre ?? ""]) {
+        .task(id: store.addons.map(\.id) + [model.selectedAddonID ?? "", model.selectedGenre ?? "", typeFilter ?? ""]) {
             await model.load(store: store, client: HTTPClient(), adultOK: debrid.adultCatalogsOptIn)
         }
         .refreshable {
             await model.load(store: store, client: HTTPClient(), force: true, adultOK: debrid.adultCatalogsOptIn)
         }
+    }
+
+    private var filteredShelves: [StremioCatalogHubModel.Shelf] {
+        guard let typeFilter else { return model.shelves }
+        return model.shelves.filter { shelf in
+            shelf.catalogType.lowercased() == typeFilter
+                || shelf.title.lowercased().contains(typeFilter)
+        }
+    }
+
+    private var typePicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                typeChip(nil, title: "All")
+                ForEach(typeTabs, id: \.self) { type in
+                    typeChip(type, title: type.capitalized)
+                }
+            }
+        }
+    }
+
+    private func typeChip(_ type: String?, title: String) -> some View {
+        let selected = typeFilter == type
+        return Button {
+            typeFilter = type
+            DesignTokens.Haptics.selection()
+        } label: {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .foregroundStyle(selected ? .white : AppTheme.primaryText)
+                .background {
+                    Capsule()
+                        .fill(selected ? environment.theme.accent : AppTheme.elevatedSurface)
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     private var introCard: some View {

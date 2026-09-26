@@ -433,6 +433,7 @@ final class DetailsViewModel: ObservableObject {
     @Published private(set) var item: MediaItem
     @Published private(set) var episodes: [String: [MediaEpisode]] = [:]
     @Published private(set) var isLoading = false
+    @Published private(set) var trailerURL: URL?
     @Published var errorMessage: String?
     private let tmdbMetadataSnapshot: TrendingTitle?
 
@@ -460,34 +461,14 @@ final class DetailsViewModel: ObservableObject {
             let tmdbItem = try await environment.tmdbDetails(for: item)
             item = tmdbItem
             if item.providerID.hasPrefix("stremio:"),
-               (item.seasons.isEmpty || (item.overview?.isEmpty ?? true)),
-               let enriched = await StremioMetaEnricher.enrich(item: item) {
-                item = enriched
-            } else if item.seasons.isEmpty,
-                      item.kind == .series,
-                      let enriched = await StremioMetaEnricher.enrich(item: item) {
-                // Keep TMDB fields; merge seasons/episodes from addon meta when TMDB lacks them.
-                if !enriched.seasons.isEmpty {
-                    item = MediaItem(
-                        id: item.id,
-                        providerID: item.providerID,
-                        kind: item.kind,
-                        title: item.title,
-                        originalTitle: item.originalTitle,
-                        overview: item.overview ?? enriched.overview,
-                        releaseDate: item.releaseDate ?? enriched.releaseDate,
-                        rating: item.rating ?? enriched.rating,
-                        quality: item.quality,
-                        runtimeMinutes: item.runtimeMinutes,
-                        imdbID: item.imdbID ?? enriched.imdbID,
-                        tmdbID: item.tmdbID ?? enriched.tmdbID,
-                        posterURL: item.posterURL ?? enriched.posterURL,
-                        backdropURL: item.backdropURL ?? enriched.backdropURL,
-                        genres: item.genres.isEmpty ? enriched.genres : item.genres,
-                        cast: item.cast,
-                        seasons: enriched.seasons
-                    )
-                }
+               (item.seasons.isEmpty || (item.overview?.isEmpty ?? true) || item.cast.isEmpty),
+               let detailed = await StremioMetaEnricher.enrichDetailed(item: item) {
+                item = StremioMetaEnricher.merging(detailed.item, into: item)
+                trailerURL = detailed.trailerURL ?? trailerURL
+            } else if item.seasons.isEmpty || item.cast.isEmpty,
+                      let detailed = await StremioMetaEnricher.enrichDetailed(item: item) {
+                item = StremioMetaEnricher.merging(detailed.item, into: item)
+                trailerURL = detailed.trailerURL ?? trailerURL
             }
             if let season = orderedSeasons.first {
                 await loadEpisodes(season, environment: environment)
@@ -562,6 +543,7 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var isSearching = false
     @Published private(set) var sourceRevision = 0
     @Published var errorMessage: String?
+    @Published private(set) var stremioDiagnostics = StremioResolveDiagnostics()
     @Published private(set) var request: PlaybackRequest
     private let discovery = PlaybackDiscovery()
     private var contextTask: Task<PlaybackLookupContext, Never>?
@@ -608,17 +590,31 @@ final class PlayerViewModel: ObservableObject {
             remembered = nil
         }
         rememberedSource = remembered
-        policy = StreamSelectionPolicy(preference: rememberedSource, audioLanguage: audioLanguage,
-            backupAudioLanguage: backupAudioLanguage, qualityHeight: qualityHeight)
+        let debridPrefs = StremioDebridStore.shared
+        let binge = StremioBingeContinuityStore.preferredGroup(forShowID: request.media.id)
+        var nextPolicy = StreamSelectionPolicy(
+            preference: rememberedSource,
+            audioLanguage: audioLanguage,
+            backupAudioLanguage: backupAudioLanguage,
+            qualityHeight: qualityHeight
+        )
+        nextPolicy.preferDebridCached = debridPrefs.preferCachedDebridLinks
+        nextPolicy.preferredBingeGroup = binge
+        if debridPrefs.maxPreferredSizeGB > 0 {
+            nextPolicy.maxPreferredSizeBytes = Int64(debridPrefs.maxPreferredSizeGB) * 1_000_000_000
+        }
+        policy = nextPolicy
         defer { if operation == token { isLoading = false } }
         let originalPlaybackRequest = request
         discovery.onUpdate = { [weak self] streams in
             guard self?.operation == token else { return }
             self?.streams = streams
+            self?.stremioDiagnostics = StremioResolveDiagnosticsStore.current()
         }
         discovery.onSearchingChanged = { [weak self] isSearching in
             guard self?.operation == token else { return }
             self?.isSearching = isSearching
+            self?.stremioDiagnostics = StremioResolveDiagnosticsStore.current()
         }
         do {
             let playbackRequest = await environment.canonicalPlaybackRequest(
@@ -658,6 +654,7 @@ final class PlayerViewModel: ObservableObject {
             if let appError = error as? AppError, case .noStream = appError {
                 let language = AppSetupStore.activePlaybackLanguageGroup.title
                 let stremio = StremioResolveDiagnosticsStore.current()
+                stremioDiagnostics = stremio
                 if AppSetupStore.isStremioPlaybackEnabled,
                    (stremio.queriedAddons > 0 || stremio.skippedTorrent > 0 || stremio.missingIMDb) {
                     errorMessage = "No \(language) sources found. \(stremio.userFacingSummary)"

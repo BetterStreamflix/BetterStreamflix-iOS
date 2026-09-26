@@ -20,7 +20,7 @@ No third-party Swift packages are required.
 
 ## Version
 
-Current marketing version: **0.1.12**. CI advances the build number on each release.
+Current marketing version: **0.1.13**. CI advances the build number on each release.
 
 ## Unsigned IPA (GitHub Actions + Releases)
 

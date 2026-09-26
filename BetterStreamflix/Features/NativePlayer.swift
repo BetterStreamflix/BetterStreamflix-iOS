@@ -4281,6 +4281,10 @@ struct NativePlayerController: UIViewControllerRepresentable {
                         metadata.append(quality)
                     }
 
+                    if stream.candidate.displayMetadata?.isDebridCached == true {
+                        metadata.append("Cached")
+                    }
+
                     if let container = stream.candidate.displayMetadata?.container {
                         metadata.append(container.uppercased())
                     }
@@ -4292,6 +4296,11 @@ struct NativePlayerController: UIViewControllerRepresentable {
                                 countStyle: .file
                             )
                         )
+                    }
+
+                    if let addon = stream.candidate.displayMetadata?.addonName,
+                       !sourceName.contains(addon) {
+                        metadata.append(addon)
                     }
 
                     if active {

@@ -25,6 +25,7 @@ struct RootView: View {
     @State private var hasCompletedSetup = AppSetupStore.isCompleted
     @State private var pendingAutomaticUpdate: AppUpdateInfo?
     @State private var automaticUpdateRelease: AppUpdateInfo?
+    @State private var pendingStremioInstallURL: String?
     @AppStorage("updates.skippedReleaseTag") private var skippedUpdateTag = ""
 
     var body: some View {
@@ -82,6 +83,19 @@ struct RootView: View {
             pendingAutomaticUpdate = nil
             automaticUpdateRelease = release
         }
+        .onAppear {
+            if pendingStremioInstallURL == nil,
+               let pending = StremioInstallDeepLink.peekPending() {
+                pendingStremioInstallURL = pending
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: StremioInstallDeepLink.didReceiveNotification)) { note in
+            if let raw = note.object as? String {
+                pendingStremioInstallURL = raw
+            } else if let pending = StremioInstallDeepLink.peekPending() {
+                pendingStremioInstallURL = pending
+            }
+        }
         .sheet(item: $automaticUpdateRelease) { info in
             UpdateCheckSheet(
                 result: .updateAvailable(info),
@@ -96,6 +110,24 @@ struct RootView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(24)
+        }
+        .sheet(isPresented: Binding(
+            get: { pendingStremioInstallURL != nil },
+            set: { if !$0 { pendingStremioInstallURL = nil } }
+        )) {
+            if let pendingStremioInstallURL {
+                StremioInstallPromptSheet(
+                    rawURL: pendingStremioInstallURL,
+                    onDismiss: {
+                        _ = StremioInstallDeepLink.consumePending()
+                        self.pendingStremioInstallURL = nil
+                    },
+                    onInstalled: {
+                        selectedTab = .more
+                    }
+                )
+                .environmentObject(environment)
+            }
         }
     }
 

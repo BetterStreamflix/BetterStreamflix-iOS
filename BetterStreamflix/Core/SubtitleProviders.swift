@@ -60,6 +60,7 @@ struct SubtitleLookupRequest: Hashable, Sendable {
     let seasonNumber: Int?
     let episodeNumber: Int?
     var title: String? = nil
+    var tmdbID: Int? = nil
 }
 
 protocol SubtitleProvider: Sendable {
@@ -803,14 +804,17 @@ struct KtuvitSubtitleProvider: SubtitleProvider {
 
 extension PlaybackRequest {
     var subtitleLookupRequest: SubtitleLookupRequest? {
-        guard let imdbID = media.imdbID,
-              imdbID.range(of: #"^tt\d{7,9}$"#, options: .regularExpression) != nil else { return nil }
+        let hasIMDb = media.imdbID.map {
+            $0.range(of: #"^tt\d{7,9}$"#, options: .regularExpression) != nil
+        } ?? false
+        guard hasIMDb || media.tmdbID != nil else { return nil }
         return SubtitleLookupRequest(
             kind: media.kind,
-            imdbID: imdbID,
+            imdbID: media.imdbID ?? "",
             seasonNumber: episode?.seasonNumber,
             episodeNumber: episode?.number,
-            title: media.title
+            title: media.title,
+            tmdbID: media.tmdbID
         )
     }
 }

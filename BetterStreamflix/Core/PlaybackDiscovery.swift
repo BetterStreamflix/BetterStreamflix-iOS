@@ -51,6 +51,39 @@ struct StreamDisplayMetadata: Sendable {
     let container: String?
     let audioLanguage: String?
     let releaseType: String?
+    /// Stremio addon display name when the candidate came from a community plugin.
+    let addonName: String?
+    let addonID: String?
+    /// True when the stream title/description marks a debrid-cached link (`[RD+]`, Cached, ⚡).
+    let isDebridCached: Bool?
+    let bingeGroup: String?
+    let seedersHint: Int?
+
+    init(
+        origin: String,
+        quality: String? = nil,
+        sizeBytes: Int64? = nil,
+        container: String? = nil,
+        audioLanguage: String? = nil,
+        releaseType: String? = nil,
+        addonName: String? = nil,
+        addonID: String? = nil,
+        isDebridCached: Bool? = nil,
+        bingeGroup: String? = nil,
+        seedersHint: Int? = nil
+    ) {
+        self.origin = origin
+        self.quality = quality
+        self.sizeBytes = sizeBytes
+        self.container = container
+        self.audioLanguage = audioLanguage
+        self.releaseType = releaseType
+        self.addonName = addonName
+        self.addonID = addonID
+        self.isDebridCached = isDebridCached
+        self.bingeGroup = bingeGroup
+        self.seedersHint = seedersHint
+    }
 }
 
 struct PlayableStream: Identifiable, Sendable {
@@ -61,11 +94,12 @@ struct PlayableStream: Identifiable, Sendable {
     var label: String {
         if let metadata = candidate.displayMetadata {
             var details = [metadata.origin]
+            if metadata.isDebridCached == true { details.append("Cached") }
             if let quality = metadata.quality { details.append(quality) }
             if let size = metadata.sizeBytes {
                 details.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
             } else if let container = metadata.container { details.append(container) }
-            if let release = metadata.releaseType, details.count < 4 { details.append(release) }
+            if let release = metadata.releaseType, details.count < 5 { details.append(release) }
             return details.joined(separator: " · ")
         }
         let audio = candidate.preference.audioLanguage == "ja" ? "Japanese" :
@@ -125,6 +159,12 @@ struct StreamSelectionPolicy: Sendable {
     var audioLanguage: String = "en"
     var backupAudioLanguage: String = ""
     var qualityHeight: Int = 0
+    /// Prefer debrid-cached HTTP links (`[RD+]`) over uncached resolves.
+    var preferDebridCached: Bool = true
+    /// Soft-match last binge group for series continuity.
+    var preferredBingeGroup: String? = nil
+    /// Soft cap in bytes; oversized REMUXes rank worse unless quality demands them.
+    var maxPreferredSizeBytes: Int64? = nil
 
     func best(in streams: [PlayableStream]) -> PlayableStream? {
         streams.enumerated().min { score($0.element, order: $0.offset).lexicographicallyPrecedes(score($1.element, order: $1.offset)) }?.element
@@ -132,6 +172,7 @@ struct StreamSelectionPolicy: Sendable {
 
     private func score(_ stream: PlayableStream, order: Int) -> [Int] {
         let candidate = stream.candidate
+        let metadata = candidate.displayMetadata
         let language = candidate.preference.audioLanguage
         let audioRank: Int
         if language == audioLanguage {
@@ -143,9 +184,34 @@ struct StreamSelectionPolicy: Sendable {
         }
         let quality = qualityHeight > 0 ? StreamQuality.closest(to: qualityHeight, in: stream.qualities)?.height : nil
         let qualityRank = quality.map { abs(qualityHeight - $0) } ?? (qualityHeight > 0 ? 10000 : 0)
-        return [preference == candidate.preference ? 0 : 1, audioRank,
-                candidate.subtitleKind == .embeddedEnglish ? 2 : candidate.subtitleKind == .unknown ? 1 : 0,
-                qualityRank, order]
+        let cachedRank: Int
+        if preferDebridCached {
+            cachedRank = metadata?.isDebridCached == true ? 0 : 1
+        } else {
+            cachedRank = 0
+        }
+        let bingeRank: Int
+        if let preferredBingeGroup, !preferredBingeGroup.isEmpty {
+            bingeRank = metadata?.bingeGroup == preferredBingeGroup ? 0 : 1
+        } else {
+            bingeRank = 0
+        }
+        let sizeRank: Int
+        if let max = maxPreferredSizeBytes, let size = metadata?.sizeBytes, size > max {
+            sizeRank = 1
+        } else {
+            sizeRank = 0
+        }
+        return [
+            preference == candidate.preference ? 0 : 1,
+            cachedRank,
+            bingeRank,
+            audioRank,
+            candidate.subtitleKind == .embeddedEnglish ? 2 : candidate.subtitleKind == .unknown ? 1 : 0,
+            sizeRank,
+            qualityRank,
+            order,
+        ]
     }
 }
 

@@ -2,21 +2,36 @@ import Foundation
 
 /// Pulls Stremio `meta` when TMDB is thin or the title came from an addon catalog (P3).
 enum StremioMetaEnricher {
+    struct Enrichment: Sendable {
+        var item: MediaItem
+        var trailerURL: URL?
+        var trailerYouTubeID: String?
+    }
+
     static func enrich(item: MediaItem) async -> MediaItem? {
+        await enrichDetailed(item: item)?.item
+    }
+
+    static func enrichDetailed(item: MediaItem) async -> Enrichment? {
         let addons = await MainActor.run { StremioAddonStore.shared.enabledAddons.filter(\.supportsMeta) }
         guard !addons.isEmpty else { return nil }
         let type = item.kind == .movie ? "movie" : "series"
         let identifiers = metaIdentifiers(for: item)
         guard !identifiers.isEmpty else { return nil }
 
-        return await withTaskGroup(of: MediaItem?.self, returning: MediaItem?.self) { group in
+        return await withTaskGroup(of: Enrichment?.self, returning: Enrichment?.self) { group in
             for addon in addons.prefix(4) {
                 for identifier in identifiers {
                     group.addTask {
                         let client = StremioAddonClient(client: HTTPClient(), baseURL: addon.baseURL)
                         do {
                             let detail = try await client.meta(type: type, id: identifier)
-                            return detail.asMediaItem(providerID: item.providerID)
+                            let mapped = detail.asMediaItem(providerID: item.providerID)
+                            return Enrichment(
+                                item: mapped,
+                                trailerURL: detail.primaryTrailerURL,
+                                trailerYouTubeID: detail.primaryTrailerYouTubeID
+                            )
                         } catch {
                             return nil
                         }
@@ -28,6 +43,29 @@ enum StremioMetaEnricher {
             }
             return nil
         }
+    }
+
+    /// Merge Stremio meta into an existing TMDB-backed item without wiping strong fields.
+    static func merging(_ enriched: MediaItem, into item: MediaItem) -> MediaItem {
+        MediaItem(
+            id: item.id,
+            providerID: item.providerID,
+            kind: item.kind,
+            title: item.title,
+            originalTitle: item.originalTitle,
+            overview: (item.overview?.isEmpty == false) ? item.overview : enriched.overview,
+            releaseDate: item.releaseDate ?? enriched.releaseDate,
+            rating: item.rating ?? enriched.rating,
+            quality: item.quality,
+            runtimeMinutes: item.runtimeMinutes ?? enriched.runtimeMinutes,
+            imdbID: item.imdbID ?? enriched.imdbID,
+            tmdbID: item.tmdbID ?? enriched.tmdbID,
+            posterURL: item.posterURL ?? enriched.posterURL,
+            backdropURL: item.backdropURL ?? enriched.backdropURL,
+            genres: item.genres.isEmpty ? enriched.genres : item.genres,
+            cast: item.cast.isEmpty ? enriched.cast : item.cast,
+            seasons: item.seasons.isEmpty ? enriched.seasons : item.seasons
+        )
     }
 
     static func episodes(for season: MediaSeason, show: MediaItem) async -> [MediaEpisode]? {
@@ -67,13 +105,11 @@ enum StremioMetaEnricher {
         if let tmdb = item.tmdbID {
             ids.append("tmdb:\(tmdb)")
         }
-        // Raw Stremio catalog id (may already be tt… or tmdb:…).
         if item.id.contains(":") {
             let raw = item.id.split(separator: ":").last.map(String.init) ?? item.id
             if raw.hasPrefix("tt") || raw.hasPrefix("tmdb:") {
                 ids.append(raw)
             } else if item.providerID.hasPrefix("stremio:") {
-                // Full id after provider prefix pieces: stremio:addon:tt…
                 let parts = item.id.split(separator: ":")
                 if parts.count >= 3 {
                     let candidate = parts.dropFirst(2).joined(separator: ":")

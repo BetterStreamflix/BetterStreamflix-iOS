@@ -74,11 +74,14 @@ struct StremioManifest: Codable, Hashable, Sendable {
         return true
     }
 
-    var configurationURL: URL? {
-        // Stremio convention: many configurable addons expose config at /configure
-        // Callers typically open the origin + "/configure".
-        nil
+    /// Configuration page for configurable addons (Stremio convention: `{base}/configure`).
+    func configurationURL(relativeTo baseURL: URL) -> URL? {
+        guard isConfigurable || requiresConfiguration else { return nil }
+        return baseURL.appendingPathComponent("configure")
     }
+
+    @available(*, deprecated, message: "Use configurationURL(relativeTo:)")
+    var configurationURL: URL? { nil }
 }
 
 struct StremioManifestResource: Codable, Hashable, Sendable {
@@ -237,12 +240,18 @@ struct StremioMetaDetail: Decodable, Hashable, Sendable {
     let imdbID: String?
     let videos: [StremioMetaVideo]?
     let moviedbID: Int?
+    let cast: [String]?
+    let director: [String]?
+    let writer: [String]?
+    let trailers: [StremioTrailer]?
+    let links: [StremioMetaLink]?
 
     enum CodingKeys: String, CodingKey {
         case id, type, name, poster, background, logo, description
         case releaseInfo, imdbRating, genres, runtime, videos
         case imdbID = "imdb_id"
         case moviedbID = "moviedb_id"
+        case cast, director, writer, trailers, links
     }
 
     func asMediaItem(providerID: String) -> MediaItem {
@@ -262,6 +271,11 @@ struct StremioMetaDetail: Decodable, Hashable, Sendable {
             imdbID: imdbID
         )
         let base = preview.asMediaItem(providerID: providerID)
+        let castMembers: [CastMember] = (cast ?? []).enumerated().compactMap { index, name in
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return CastMember(id: "\(id)-cast-\(index)", name: trimmed, imageURL: nil, tmdbID: nil)
+        }
         return MediaItem(
             id: base.id,
             providerID: base.providerID,
@@ -272,15 +286,30 @@ struct StremioMetaDetail: Decodable, Hashable, Sendable {
             releaseDate: base.releaseDate,
             rating: base.rating,
             quality: base.quality,
-            runtimeMinutes: base.runtimeMinutes,
+            runtimeMinutes: base.runtimeMinutes ?? Self.parsedRuntimeMinutes(runtime),
             imdbID: base.imdbID,
             tmdbID: base.tmdbID ?? moviedbID,
             posterURL: base.posterURL,
             backdropURL: base.backdropURL,
             genres: base.genres,
-            cast: base.cast,
+            cast: castMembers,
             seasons: seasons
         )
+    }
+
+    var primaryTrailerYouTubeID: String? {
+        if let yt = trailers?.compactMap(\.ytId).first, !yt.isEmpty { return yt }
+        if let link = links?.first(where: { ($0.category ?? "").lowercased().contains("trailer") }) {
+            return Self.youtubeID(from: link.url)
+        }
+        return nil
+    }
+
+    var primaryTrailerURL: URL? {
+        if let yt = primaryTrailerYouTubeID {
+            return URL(string: "https://www.youtube.com/watch?v=\(yt)")
+        }
+        return nil
     }
 
     private var seasons: [MediaSeason] {
@@ -314,6 +343,48 @@ struct StremioMetaDetail: Decodable, Hashable, Sendable {
                 )
             }
     }
+
+    private static func parsedRuntimeMinutes(_ raw: String?) -> Int? {
+        guard let raw else { return nil }
+        if let minutes = Int(raw.replacingOccurrences(of: #"[^\d]"#, with: "", options: .regularExpression)) {
+            return minutes > 0 ? minutes : nil
+        }
+        return nil
+    }
+
+    private static func youtubeID(from raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if raw.count == 11, raw.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression) != nil {
+            return raw
+        }
+        if let url = URL(string: raw),
+           let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+           let v = items.first(where: { $0.name == "v" })?.value {
+            return v
+        }
+        if let range = raw.range(of: #"youtu\.be/([A-Za-z0-9_-]{11})"#, options: .regularExpression) {
+            let match = String(raw[range])
+            return match.split(separator: "/").last.map(String.init)
+        }
+        return nil
+    }
+}
+
+struct StremioTrailer: Decodable, Hashable, Sendable {
+    let source: String?
+    let type: String?
+
+    var ytId: String? {
+        guard let source, !source.isEmpty else { return nil }
+        if source.count == 11 { return source }
+        return nil
+    }
+}
+
+struct StremioMetaLink: Decodable, Hashable, Sendable {
+    let name: String?
+    let category: String?
+    let url: String?
 }
 
 struct StremioMetaVideo: Decodable, Hashable, Sendable {
@@ -333,7 +404,9 @@ struct StremioStream: Decodable, Sendable {
     let url: URL?
     let ytId: String?
     let infoHash: String?
+    let fileIdx: Int?
     let externalUrl: URL?
+    let subtitles: [StremioSubtitle]?
     let behaviorHints: BehaviorHints?
 
     struct BehaviorHints: Decodable, Sendable {
@@ -364,6 +437,32 @@ struct StremioStream: Decodable, Sendable {
     var isYouTube: Bool { ytId != nil && url == nil }
     var isExternalOnly: Bool { externalUrl != nil && url == nil }
     var notWebReady: Bool { behaviorHints?.notWebReady == true }
+
+    /// Heuristic for Torrentio/Comet/MediaFusion cached debrid markers.
+    var looksDebridCached: Bool {
+        let haystack = (detailText + " " + displayLabel).lowercased()
+        if haystack.contains("[rd+]") || haystack.contains("[ad+]") || haystack.contains("[pm+]")
+            || haystack.contains("[tb+]") || haystack.contains("[rd ✓]") {
+            return true
+        }
+        if haystack.contains("cached") || haystack.contains("⚡") {
+            return true
+        }
+        if haystack.contains("download") && haystack.contains("%") {
+            return false
+        }
+        return false
+    }
+
+    var seedersHint: Int? {
+        let haystack = detailText + "\n" + displayLabel
+        guard let match = haystack.range(
+            of: #"(?i)(?:👤|seeders?|seeds)[^\d]*(\d+)"#,
+            options: .regularExpression
+        ) else { return nil }
+        let digits = haystack[match].filter(\.isNumber)
+        return Int(digits)
+    }
 
     enum PlaybackKind: String, Sendable {
         case http

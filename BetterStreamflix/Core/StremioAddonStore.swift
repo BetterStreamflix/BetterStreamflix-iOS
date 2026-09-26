@@ -59,6 +59,12 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
     var isConfigurable: Bool
     var requiresConfiguration: Bool
     var streamSmokeOK: Bool?
+    /// Last known remote version from health refresh (for update badges).
+    var remoteVersion: String?
+    var updateAvailable: Bool {
+        guard let remoteVersion, let version, !remoteVersion.isEmpty else { return false }
+        return remoteVersion != version
+    }
 
     var transportID: String { id }
 
@@ -115,7 +121,8 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
         isP2P: Bool = false,
         isConfigurable: Bool = false,
         requiresConfiguration: Bool = false,
-        streamSmokeOK: Bool? = nil
+        streamSmokeOK: Bool? = nil,
+        remoteVersion: String? = nil
     ) {
         self.id = id
         self.manifestURL = manifestURL
@@ -143,6 +150,7 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
         self.isConfigurable = isConfigurable
         self.requiresConfiguration = requiresConfiguration
         self.streamSmokeOK = streamSmokeOK
+        self.remoteVersion = remoteVersion
     }
 
     init(from decoder: any Decoder) throws {
@@ -173,12 +181,20 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
         isConfigurable = try container.decodeIfPresent(Bool.self, forKey: .isConfigurable) ?? false
         requiresConfiguration = try container.decodeIfPresent(Bool.self, forKey: .requiresConfiguration) ?? false
         streamSmokeOK = try container.decodeIfPresent(Bool.self, forKey: .streamSmokeOK)
+        remoteVersion = try container.decodeIfPresent(String.self, forKey: .remoteVersion)
     }
 
     mutating func apply(manifest: StremioManifest, baseURL: URL) {
         self.baseURL = baseURL
         name = manifest.name
-        version = manifest.version
+        if let remote = manifest.version {
+            if version != nil, version != remote {
+                remoteVersion = remote
+            } else {
+                version = remote
+                remoteVersion = remote
+            }
+        }
         detail = manifest.description
         logoURL = URL(string: manifest.logo ?? "")
         supportsCatalog = manifest.supportsCatalog
@@ -195,6 +211,13 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
             if catalog.supportsSearch { return true }
             return !catalog.requiresExtras
         }
+    }
+
+    mutating func applyUpdate(from manifest: StremioManifest, baseURL: URL, manifestURL: URL) {
+        self.manifestURL = manifestURL
+        apply(manifest: manifest, baseURL: baseURL)
+        version = manifest.version
+        remoteVersion = manifest.version
     }
 }
 
@@ -339,6 +362,26 @@ enum StremioCuratedCatalog {
                 kind: .subtitles,
                 isPopularOptional: true
             ),
+            StremioCuratedAddon(
+                id: "com.viren070.aiostreams",
+                name: "AIOStreams",
+                blurb: "All-in-one stream aggregator. Pair with Debrid for cached HTTP playback — no in-app BitTorrent.",
+                manifestURL: URL(string: "https://aiostreams.elfhosted.com/stremio/manifest.json")!,
+                capabilities: "Stream (Debrid)",
+                kind: .stream,
+                isPopularOptional: true,
+                networkNote: "Install with Debrid after saving a token. Configure filters in the addon page if needed."
+            ),
+            StremioCuratedAddon(
+                id: "com.stremio.torrentio.addon.mirror",
+                name: "Torrentio (ElfHosted mirror)",
+                blurb: "Torrentio mirror host. Use when torrentio.strem.fun is blocked — still needs Debrid for playback.",
+                manifestURL: URL(string: "https://torrentio.elfhosted.com/manifest.json")!,
+                capabilities: "Stream (Debrid)",
+                kind: .stream,
+                isPopularOptional: true,
+                networkNote: "Mirror of Torrentio. Install with Debrid."
+            ),
         ]
     }
 
@@ -363,7 +406,7 @@ enum StremioCuratedCatalog {
     }
 
     static func isDebridStreamPreset(_ curated: StremioCuratedAddon) -> Bool {
-        ["torrentio", "comet", "mediafusion"].contains {
+        ["torrentio", "comet", "mediafusion", "aiostreams"].contains {
             curated.id.lowercased().contains($0) || curated.name.lowercased().contains($0)
         }
     }
@@ -506,6 +549,59 @@ final class StremioAddonStore: ObservableObject {
         _ = try await install(from: url.absoluteString, curated: true)
     }
 
+    /// Rewrite installed Debrid stream addons to the preferred token/service (one-tap rebind).
+    @discardableResult
+    func rebindDebridProfiles(debrid: StremioDebridStore = .shared) async throws -> Int {
+        guard let profile = debrid.preferredProfile else {
+            throw AppError.decoding("Save a Debrid token first")
+        }
+        var rebound = 0
+        let targets = addons.filter { addon in
+            addon.supportsStream && (
+                StremioDebridURLBuilder.looksConfigured(addon.manifestURL)
+                    || ["torrentio", "comet", "mediafusion", "aiostreams"].contains {
+                        addon.id.lowercased().contains($0) || addon.name.lowercased().contains($0)
+                    }
+            )
+        }
+        for addon in targets {
+            let bare = StremioDebridURLBuilder.bareManifestURL(from: addon.manifestURL)
+            guard let url = StremioDebridURLBuilder.configuredManifestURL(
+                for: addon.id,
+                service: profile.service,
+                token: profile.token,
+                baseManifestURL: bare,
+                options: debrid.installOptions
+            ) else { continue }
+            do {
+                _ = try await install(from: url.absoluteString, curated: addon.isCurated)
+                rebound += 1
+            } catch {
+                continue
+            }
+        }
+        return rebound
+    }
+
+    /// Apply a pending remote version update while keeping enabled/sortOrder.
+    func applyPendingUpdate(for addon: InstalledStremioAddon) async throws {
+        guard let index = addons.firstIndex(where: { $0.id == addon.id }) else { return }
+        let loaded = try await StremioAddonClient.loadManifest(from: addon.manifestURL, client: client)
+        addons[index].applyUpdate(
+            from: loaded.manifest,
+            baseURL: loaded.baseURL,
+            manifestURL: addon.manifestURL
+        )
+        addons[index].health = .healthy
+        addons[index].lastCheckedAt = Date()
+        addons[index].lastError = nil
+        persist()
+    }
+
+    var addonsWithUpdates: [InstalledStremioAddon] {
+        addons.filter(\.updateAvailable)
+    }
+
     func remove(_ addon: InstalledStremioAddon) {
         addons.removeAll { $0.id == addon.id }
         renumber()
@@ -539,8 +635,8 @@ final class StremioAddonStore: ObservableObject {
             addons[index].latencyMS = ms
             addons[index].lastCheckedAt = Date()
             addons[index].lastError = nil
-            if loaded.manifest.version != addon.version {
-                // Version bump detected — health refresh already applied new version.
+            if let remote = loaded.manifest.version {
+                addons[index].remoteVersion = remote
             }
         } catch {
             addons[index].health = .unreachable
