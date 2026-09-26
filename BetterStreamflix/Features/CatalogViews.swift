@@ -289,7 +289,11 @@ struct CanonicalPosterArtwork: View {
 
     var body: some View {
         CachedRemoteImage(url: posterURL) { image in
-            image.resizable().scaledToFill()
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .clipped()
         } placeholder: {
             Rectangle().fill(.gray.opacity(0.22))
                 .overlay { Image(systemName: item.kind == .movie ? "film" : "tv") }
@@ -379,7 +383,11 @@ struct TMDBPosterCard: View {
             .frame(maxWidth: width == nil ? .infinity : width)
             .overlay {
                 CachedRemoteImage(url: title.posterURL ?? title.backdropURL) { image in
-                    image.resizable().scaledToFill()
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                        .clipped()
                 } placeholder: {
                     Rectangle().fill(.gray.opacity(0.22))
                         .overlay { Image(systemName: title.kind == .movie ? "film" : "tv") }

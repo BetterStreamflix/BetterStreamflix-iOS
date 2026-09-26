@@ -216,7 +216,11 @@ struct ContinueWatchingRowArtwork: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             CachedRemoteImage(url: progress.continueWatchingArtworkURL) { image in
-                image.resizable().scaledToFill()
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 128, height: 74)
+                    .clipped()
             } placeholder: {
                 Rectangle()
                     .fill(.gray.opacity(0.22))

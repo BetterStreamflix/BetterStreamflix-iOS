@@ -33,10 +33,10 @@ struct TMDBArtwork: Equatable, Sendable {
     let posterURL: URL?
     let backdropURL: URL?
 
-    /// The app's portrait hero matches the Home carousel, so posters are the
-    /// primary artwork and backdrops are only a fallback when no poster loads.
+    /// Featured / Detail heroes are landscape full-bleed frames — prefer a
+    /// single TMDB backdrop, with poster only as fallback.
     var heroURLs: [URL] {
-        [posterURL, backdropURL].compactMap { $0 }.reduce(into: []) { urls, url in
+        [backdropURL, posterURL].compactMap { $0 }.reduce(into: []) { urls, url in
             if !urls.contains(url) { urls.append(url) }
         }
     }
@@ -497,6 +497,10 @@ actor TMDBClient {
             let preferredLanguage = Self.imageLanguageCode(from: language)
             let hasLogo = images.preferredLogoURL(language: preferredLanguage) != nil
             var preferred: [URL] = []
+            // Official title backdrop first — avoids gallery collage / strip arts.
+            if let backdropURL = item.backdropURL {
+                preferred.append(backdropURL)
+            }
             if hasLogo {
                 preferred.append(contentsOf: images.preferredTextlessHeroURLs())
             }
@@ -508,7 +512,7 @@ actor TMDBClient {
             }
         }
 
-        let directTMDBURLs = [item.posterURL, item.backdropURL]
+        let directTMDBURLs = [item.backdropURL, item.posterURL]
             .compactMap { $0 }
             .filter { $0.host?.lowercased() == "image.tmdb.org" }
         var result = await firstLoadableImage(from: directTMDBURLs, excluding: attemptedURLs)
@@ -533,9 +537,8 @@ actor TMDBClient {
         }
 
         // Provider artwork is the final fallback when TMDB is missing or its CDN
-        // object cannot be decoded. Keep poster-first ordering consistent with
-        // the Home carousel here as well.
-        let providerURLs = [item.posterURL, item.backdropURL]
+        // object cannot be decoded. Backdrop-first matches Featured / Detail heroes.
+        let providerURLs = [item.backdropURL, item.posterURL]
             .compactMap { $0 }
             .filter { $0.host?.lowercased() != "image.tmdb.org" }
         return await firstLoadableImage(
@@ -619,8 +622,9 @@ actor TMDBClient {
         }
     }
 
-    /// Loads the clear title logo plus hero artwork that prefers textless
-    /// poster/backdrop stills so logos are not doubled over baked-in title treatments.
+    /// Loads the clear title logo plus a single cinematic backdrop for the hero.
+    /// Prefer the official title backdrop over gallery stills (which can be
+    /// multi-panel collages), then textless landscape backdrops, then posters.
     func titlePresentationAssets(
         tmdbID: Int,
         kind: MediaKind,
@@ -647,15 +651,18 @@ actor TMDBClient {
         }()
 
         var candidateURLs: [URL] = []
+        // Official title backdrop first — avoids gallery collage / strip arts.
+        if let fallbackBackdropURL {
+            candidateURLs.append(fallbackBackdropURL)
+        }
         if let images {
-            // When a logo will render on top, prefer language-null (textless) stills first.
             if !logoURLs.isEmpty {
                 candidateURLs.append(contentsOf: images.preferredTextlessHeroURLs())
             }
             candidateURLs.append(contentsOf: images.preferredHeroURLs(language: preferredLanguage))
         }
-        for url in [fallbackPosterURL, fallbackBackdropURL].compactMap({ $0 }) {
-            if !candidateURLs.contains(url) { candidateURLs.append(url) }
+        if let fallbackPosterURL, !candidateURLs.contains(fallbackPosterURL) {
+            candidateURLs.append(fallbackPosterURL)
         }
 
         let artwork = await firstLoadableImage(from: candidateURLs, excluding: []).data
@@ -1266,21 +1273,24 @@ private struct TMDBImagesPayload: Decodable, Sendable {
 
     /// Textless stills (`iso_639_1 == null`) preferred for Featured / Detail heroes
     /// when a clear title logo will sit on top of the artwork.
-    /// Backdrops first — title-baked typography is far more common on posters.
+    /// Landscape backdrops only — posters and collage / strip arts are excluded.
     func preferredTextlessHeroURLs() -> [URL] {
-        let textlessBackdrops = backdrops.filter { $0.languageCode == nil }
-        let textlessPosters = posters.filter { $0.languageCode == nil }
-        return uniqueURLs(
-            from: ranked(textlessBackdrops, language: "").map(\.url)
-                + ranked(textlessPosters, language: "").map(\.url)
+        uniqueURLs(
+            from: ranked(cinematicBackdrops.filter { $0.languageCode == nil }, language: "").map(\.url)
         )
     }
 
     func preferredHeroURLs(language: String) -> [URL] {
-        uniqueURLs(
-            from: ranked(backdrops, language: language).map(\.url)
-                + ranked(posters, language: language).map(\.url)
-        )
+        let landscape = ranked(cinematicBackdrops, language: language).map(\.url)
+        // Posters only after every usable landscape backdrop is exhausted.
+        let posters = ranked(posters, language: language).map(\.url)
+        return uniqueURLs(from: landscape + posters)
+    }
+
+    /// Standard cinematic backdrops (~16:9). Rejects portrait stills and
+    /// ultra-wide multi-panel / collage strips that tile as vertical bands when filled.
+    private var cinematicBackdrops: [TMDBImageAssetPayload] {
+        backdrops.filter(\.isCinematicBackdrop)
     }
 
     private func ranked(
@@ -1323,16 +1333,46 @@ private struct TMDBImageAssetPayload: Decodable, Sendable {
     let languageCode: String?
     let voteAverage: Double
     let width: Int
+    let height: Int
+    let aspectRatio: Double?
 
     enum CodingKeys: String, CodingKey {
-        case width
+        case width, height
         case filePath = "file_path"
         case languageCode = "iso_639_1"
         case voteAverage = "vote_average"
+        case aspectRatio = "aspect_ratio"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        filePath = try container.decode(String.self, forKey: .filePath)
+        languageCode = try container.decodeIfPresent(String.self, forKey: .languageCode)
+        voteAverage = try container.decodeIfPresent(Double.self, forKey: .voteAverage) ?? 0
+        width = try container.decodeIfPresent(Int.self, forKey: .width) ?? 0
+        height = try container.decodeIfPresent(Int.self, forKey: .height) ?? 0
+        aspectRatio = try container.decodeIfPresent(Double.self, forKey: .aspectRatio)
     }
 
     var url: URL? {
         URL(string: "https://image.tmdb.org/t/p/original\(filePath)")
+    }
+
+    /// Accept typical single-shot landscape backdrops; reject portrait art and
+    /// extreme ultra-wide collage strips.
+    var isCinematicBackdrop: Bool {
+        let ratio: Double
+        if let aspectRatio, aspectRatio > 0 {
+            ratio = aspectRatio
+        } else if height > 0, width > 0 {
+            ratio = Double(width) / Double(height)
+        } else if width > 0 {
+            // Width-only records are usually landscape backdrops on TMDB.
+            return true
+        } else {
+            return true
+        }
+        return ratio >= 1.4 && ratio <= 2.2
     }
 }
 

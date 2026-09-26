@@ -661,31 +661,18 @@ struct CenteredHeroArtwork: View {
             .overlay {
                 Group {
                     if let data, let image = UIImage(data: data) {
-                        GeometryReader { proxy in
-                            let fit = Self.fitScale(
-                                imageSize: image.size,
-                                in: proxy.size
-                            )
-                            ZStack {
-                                // Soft fill behind letterboxing so fit never
-                                // leaves hard empty bars.
+                        if UIDevice.current.userInterfaceIdiom == .pad {
+                            GeometryReader { proxy in
                                 Image(uiImage: image)
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(width: proxy.size.width, height: proxy.size.height)
-                                    .blur(radius: 28)
-                                    .opacity(0.42)
-                                    .allowsHitTesting(false)
-
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(
-                                        width: image.size.width * fit,
-                                        height: image.size.height * fit
-                                    )
-                                    .frame(width: proxy.size.width, height: proxy.size.height)
+                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                             }
+                        } else {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         }
                     } else {
                         Rectangle().fill(.gray.opacity(0.16))
@@ -694,21 +681,6 @@ struct CenteredHeroArtwork: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
             .clipped()
-    }
-
-    /// Prefer showing the full artwork; only slight overscan when the frame
-    /// is nearly the same aspect (avoids aggressive crop of posters/backdrops).
-    private static func fitScale(imageSize: CGSize, in frame: CGSize) -> CGFloat {
-        guard imageSize.width > 1, imageSize.height > 1,
-              frame.width > 1, frame.height > 1 else { return 1 }
-        let fit = min(frame.width / imageSize.width, frame.height / imageSize.height)
-        let fill = max(frame.width / imageSize.width, frame.height / imageSize.height)
-        let cropRatio = fill / fit
-        // If fill would crop less than ~8%, allow a gentle fill; otherwise fit.
-        if cropRatio <= 1.08 {
-            return fill
-        }
-        return fit
     }
 }
 
