@@ -889,10 +889,7 @@ final class PlayerViewModel: ObservableObject {
         let additions = event.subtitles.filter { seen.insert($0.syncKey).inserted }
         guard !additions.isEmpty else { return }
         thirdPartySubtitles.append(contentsOf: additions)
-        thirdPartySubtitles.sort {
-            if $0.providerName != $1.providerName { return $0.providerName < $1.providerName }
-            return $0.label.localizedStandardCompare($1.label) == .orderedAscending
-        }
+        thirdPartySubtitles = SubtitleRanking.sort(thirdPartySubtitles)
         subtitleRevision &+= 1
     }
 

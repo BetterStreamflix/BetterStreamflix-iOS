@@ -231,6 +231,35 @@ actor SubtitleRenditionCache {
         try? fileManager.removeItem(at: directory)
     }
 
+    struct Statistics: Sendable {
+        let entryCount: Int
+        let byteCount: Int64
+
+        var formattedSize: String {
+            ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
+        }
+    }
+
+    func statistics() -> Statistics {
+        ensureDirectory()
+        var entryCount = 0
+        var byteCount: Int64 = 0
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return Statistics(entryCount: memory.count, byteCount: 0)
+        }
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            entryCount += 1
+            byteCount += Int64(values?.fileSize ?? 0)
+        }
+        return Statistics(entryCount: max(entryCount, memory.count), byteCount: byteCount)
+    }
+
     private func startRefreshIfNeeded(
         key: StableKey,
         subtitle: SubtitleSource,

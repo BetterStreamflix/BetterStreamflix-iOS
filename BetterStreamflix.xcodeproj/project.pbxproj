@@ -15,6 +15,8 @@
 		509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */; };
 		F5F167C4365C4BF785264ADC /* OpenSubtitlesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */; };
 		80E619383D274B2BAB5D5E66 /* SubtitleProviderPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45087DD9B1B4213932C0503 /* SubtitleProviderPreferences.swift */; };
+		B20CDAFABB2A4D53AC34C74F /* SubtitleAppearancePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = F744623A818C4C868270B48B /* SubtitleAppearancePreferences.swift */; };
+		814F3DC78D264D7EBFC256C3 /* SubtitleRanking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8025D03000B449E7AF0FE1A1 /* SubtitleRanking.swift */; };
 		14DE0984B751C5DC3FEB1C70 /* PolishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */; };
 		3B0F7F0842BB420130BA8E36 /* ProviderCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */; };
 		4946995FDDA637021C797408 /* SpanishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */; };
@@ -94,6 +96,8 @@
 		2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItalianPlaybackProviders.swift; sourceTree = "<group>"; };
 		01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSubtitlesProvider.swift; sourceTree = "<group>"; };
 		D45087DD9B1B4213932C0503 /* SubtitleProviderPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleProviderPreferences.swift; sourceTree = "<group>"; };
+		F744623A818C4C868270B48B /* SubtitleAppearancePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleAppearancePreferences.swift; sourceTree = "<group>"; };
+		8025D03000B449E7AF0FE1A1 /* SubtitleRanking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleRanking.swift; sourceTree = "<group>"; };
 		B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishPlaybackProviders.swift; sourceTree = "<group>"; };
 		BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderCatalog.swift; sourceTree = "<group>"; };
 		9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpanishPlaybackProviders.swift; sourceTree = "<group>"; };
@@ -197,6 +201,8 @@
 				2947BB93FAFF94F1F73ADAEC /* ItalianPlaybackProviders.swift */,
 				01DA5CB750A5512FC74C6AD0 /* OpenSubtitlesProvider.swift */,
 				D45087DD9B1B4213932C0503 /* SubtitleProviderPreferences.swift */,
+				F744623A818C4C868270B48B /* SubtitleAppearancePreferences.swift */,
+				8025D03000B449E7AF0FE1A1 /* SubtitleRanking.swift */,
 				B354EE013911AD6286019B31 /* PolishPlaybackProviders.swift */,
 				BADAC9BE5036F3A449E4763F /* ProviderCatalog.swift */,
 				9F22E94F881A4C6D945E7714 /* SpanishPlaybackProviders.swift */,
@@ -381,6 +387,8 @@
 				509CE2A593E2FE1D72398466 /* ItalianPlaybackProviders.swift in Sources */,
 				F5F167C4365C4BF785264ADC /* OpenSubtitlesProvider.swift in Sources */,
 				80E619383D274B2BAB5D5E66 /* SubtitleProviderPreferences.swift in Sources */,
+				B20CDAFABB2A4D53AC34C74F /* SubtitleAppearancePreferences.swift in Sources */,
+				814F3DC78D264D7EBFC256C3 /* SubtitleRanking.swift in Sources */,
 				14DE0984B751C5DC3FEB1C70 /* PolishPlaybackProviders.swift in Sources */,
 				3B0F7F0842BB420130BA8E36 /* ProviderCatalog.swift in Sources */,
 				4946995FDDA637021C797408 /* SpanishPlaybackProviders.swift in Sources */,
@@ -473,7 +481,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.3;
+				MARKETING_VERSION = 0.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -666,7 +674,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.3;
+				MARKETING_VERSION = 0.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

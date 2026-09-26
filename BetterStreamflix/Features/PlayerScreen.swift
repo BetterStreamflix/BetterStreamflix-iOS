@@ -19,6 +19,111 @@ enum PlaybackLanguages {
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 }
 
+struct SubtitleTrackPickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var session: PlayerSession
+    let isSearching: Bool
+    let discoveredCount: Int
+    let discoveryComplete: Bool
+    var onOpenSettingsHint: (() -> Void)? = nil
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    if isSearching {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text(discoveredCount == 0
+                                  ? "Searching subtitle catalogs…"
+                                  : "Found \(discoveredCount) so far — still searching…")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if discoveryComplete && session.subtitlePickerEntries.count <= 1 {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("No online subtitle tracks for this title yet.")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Turn on SubDL, OpenSubtitles, Wizdom, Ktuvit, or Stremio in Settings → Subtitle Sources, or pick a built-in CC track if the stream includes one.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Got it") { onOpenSettingsHint?(); dismiss() }
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                Section("Tracks") {
+                    ForEach(session.subtitlePickerEntries) { entry in
+                        Button {
+                            Task {
+                                await session.selectSubtitlePickerEntry(entry)
+                                if entry.kind == .off || entry.isSelected == false {
+                                    dismiss()
+                                } else {
+                                    dismiss()
+                                }
+                            }
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: entry.kind == .off ? "eye.slash" : "captions.bubble.fill")
+                                    .foregroundStyle(entry.isSelected ? Color.accentColor : .secondary)
+                                    .frame(width: 22)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text(entry.title)
+                                            .font(.body.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                        if entry.isSynced {
+                                            Text("SYNC")
+                                                .font(.caption2.weight(.bold))
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color.accentColor.opacity(0.25), in: Capsule())
+                                        }
+                                    }
+                                    if !entry.subtitle.isEmpty {
+                                        Text(entry.subtitle)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                }
+                                Spacer(minLength: 8)
+                                if entry.isSelected {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("Subtitles")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await session.refreshSubtitlePickerEntries() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh tracks")
+                }
+            }
+            .task {
+                await session.refreshSubtitlePickerEntries()
+            }
+        }
+    }
+}
+
 struct SubtitleStudioVersionMenuOption: Identifiable, Equatable {
     let id: UUID
     let title: String
@@ -615,76 +720,113 @@ struct SubtitleSyncStudioView: View {
     }
 
     private var subtitleVersionMenu: some View {
-        SubtitleStudioVersionMenu(
-            options: versionsForSelectedTrack.map { version in
-                SubtitleStudioVersionMenuOption(
-                    id: version.id,
-                    title: versionName(version),
-                    offsetTenths: version.offsetTenths
-                )
-            },
-            selectedID: selectedVersionID,
-            selectedTitle: selectedVersionName,
-            onSelectOriginal: {
-                selectedVersionID = nil
-                offsetTenths = 0
-            },
-            onSelectVersion: { versionID, versionOffsetTenths in
-                selectedVersionID = versionID
-                offsetTenths = versionOffsetTenths
+        VStack(spacing: 10) {
+            SubtitleStudioVersionMenu(
+                options: versionsForSelectedTrack.map { version in
+                    SubtitleStudioVersionMenuOption(
+                        id: version.id,
+                        title: versionName(version),
+                        offsetTenths: version.offsetTenths
+                    )
+                },
+                selectedID: selectedVersionID,
+                selectedTitle: selectedVersionName,
+                onSelectOriginal: {
+                    selectedVersionID = nil
+                    offsetTenths = 0
+                },
+                onSelectVersion: { versionID, versionOffsetTenths in
+                    selectedVersionID = versionID
+                    offsetTenths = versionOffsetTenths
+                }
+            )
+
+            if let selectedVersionID {
+                Button(role: .destructive) {
+                    deleteSelectedVersion(selectedVersionID)
+                } label: {
+                    Label("Delete saved sync", systemImage: "trash")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
-        )
+        }
+    }
+
+    private func deleteSelectedVersion(_ versionID: UUID) {
+        library.deleteSubtitleSyncVersion(versionID, for: request)
+        selectedVersionID = nil
+        offsetTenths = 0
     }
 
     private var selectedSubtitleCard: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "captions.bubble.fill")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Editing Subtitle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(
-                    selectedTrack?.source.userFacingDisplayName
-                        ?? selectedTrack?.displayName
-                        ?? "Selected Subtitle"
-                )
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .multilineTextAlignment(.leading)
+        Menu {
+            ForEach(session.subtitleStudioTracks) { track in
+                Button {
+                    selectedTrackID = track.id
+                    selectedVersionID = nil
+                    offsetTenths = 0
+                    selectedCueIndex = nil
+                } label: {
+                    if selectedTrackID == track.id {
+                        Label(track.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(track.displayName)
+                    }
+                }
             }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "captions.bubble.fill")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
 
-            Spacer(minLength: 8)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Editing Subtitle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-            Image(systemName: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    Text(
+                        selectedTrack?.source.userFacingDisplayName
+                            ?? selectedTrack?.displayName
+                            ?? "Selected Subtitle"
+                    )
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                Color.white.opacity(0.06),
+                in: RoundedRectangle(
+                    cornerRadius: 14,
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: 14,
+                    style: .continuous
+                )
+                .stroke(
+                    Color.white.opacity(0.08),
+                    lineWidth: 1
+                )
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Color.white.opacity(0.06),
-            in: RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            )
-            .stroke(
-                Color.white.opacity(0.08),
-                lineWidth: 1
-            )
-        }
+        .disabled(session.subtitleStudioTracks.count < 2)
     }
 
     private var selectedTrack: SubtitleStudioTrack? {
@@ -971,6 +1113,8 @@ struct PlayerScreen: View {
     @State private var skipSegmentsContentID:
         String?
     @State private var subtitleStudioContext: SubtitleStudioContext?
+    @State private var showSubtitlePicker = false
+    @State private var subtitleStudioUnavailableMessage: String?
     @State private var sourceSwitchStatus: SourceSwitchStatus?
     @State private var sourceSwitchTask: Task<Void, Never>?
     @State private var sourceSwitchRequestID = UUID()
@@ -1174,10 +1318,16 @@ struct PlayerScreen: View {
                 }
             },
             subtitleTimingOffset: session.subtitleTimingOffset,
-            canAdjustSubtitleTiming: session.canOpenSubtitleStudio,
+            canAdjustSubtitleTiming: session.canAdjustSubtitleTiming,
             onQualityChanged: { session.setQuality($0) },
             onAdjustSubtitleTiming: { session.adjustSubtitleTiming(by: $0) },
             onOpenSubtitleSync: { openSubtitleStudio() },
+            onOpenSubtitlePicker: {
+                Task {
+                    await session.refreshSubtitlePickerEntries()
+                    showSubtitlePicker = true
+                }
+            },
             onRetryPlayback: {
                 model.resetRecovery()
                 if model.source == nil {
@@ -1455,6 +1605,41 @@ struct PlayerScreen: View {
                 initialContext: context
             )
             .environmentObject(library)
+        }
+        .sheet(isPresented: $showSubtitlePicker) {
+            SubtitleTrackPickerView(
+                session: session,
+                isSearching: model.isSearching || !model.isSubtitleDiscoveryComplete,
+                discoveredCount: model.thirdPartySubtitles.count,
+                discoveryComplete: model.isSubtitleDiscoveryComplete,
+                onOpenSettingsHint: {
+                    showSubtitlePicker = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
+        }
+        .onChange(of: model.subtitleRevision) { _, _ in
+            Task { await session.refreshSubtitlePickerEntries() }
+        }
+        .onChange(of: session.canOpenSubtitleStudio) { _, _ in
+            Task { await session.refreshSubtitlePickerEntries() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SubtitleAppearancePreferences.didChangeNotification)) { _ in
+            session.applySubtitleAppearance()
+        }
+        .overlay(alignment: .top) {
+            if let subtitleStudioUnavailableMessage {
+                Text(subtitleStudioUnavailableMessage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, ScreenMetrics.topSafeAreaInset + 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .errorAlert(Binding(get: { model.source == nil ? nil : model.errorMessage },
             set: { model.errorMessage = $0 }))
@@ -1977,14 +2162,13 @@ struct PlayerScreen: View {
     }
 
     private var enabledSubtitleProviderIDs: Set<String> {
+        // Read AppStorage so mid-session Settings changes refresh discovery on next load.
         var providers = Set<String>()
         if subDLSubtitlesEnabled { providers.insert("subdl") }
         if openSubtitlesEnabled { providers.insert("opensubtitles") }
         if wizdomSubtitlesEnabled { providers.insert("wizdom") }
         if ktuvitSubtitlesEnabled { providers.insert("ktuvit") }
-        if externalStreamSubtitlesEnabled {
-            providers.insert("external-stream-subtitles")
-        }
+        if externalStreamSubtitlesEnabled { providers.insert("external-stream-subtitles") }
         return providers
     }
 
@@ -2014,7 +2198,25 @@ struct PlayerScreen: View {
 
     private func openSubtitleStudio() {
         Task {
-            subtitleStudioContext = await session.beginSubtitleStudio()
+            if let context = await session.beginSubtitleStudio() {
+                subtitleStudioContext = context
+                return
+            }
+            let message: String
+            if model.isSubtitleDiscoveryComplete && model.thirdPartySubtitles.isEmpty && session.subtitleStudioTracks.isEmpty {
+                message = "No subtitle tracks yet. Enable catalogs in Settings → Subtitle Sources."
+            } else {
+                message = "Load a subtitle track first, then open Sync Studio."
+            }
+            withAnimation {
+                subtitleStudioUnavailableMessage = message
+            }
+            try? await Task.sleep(for: .seconds(2.4))
+            withAnimation {
+                if subtitleStudioUnavailableMessage == message {
+                    subtitleStudioUnavailableMessage = nil
+                }
+            }
         }
     }
 }

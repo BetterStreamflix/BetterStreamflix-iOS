@@ -242,6 +242,37 @@ final class HLSSubtitleLoopbackServer {
     }
 }
 
+struct SubtitlePickerEntry: Identifiable, Hashable, Sendable {
+    enum Kind: Hashable, Sendable {
+        case off
+        case track
+    }
+
+    let id: String
+    let kind: Kind
+    let title: String
+    let subtitle: String
+    let providerName: String
+    let languageCode: String?
+    let isSelected: Bool
+    let isSynced: Bool
+    let syncKey: String?
+
+    static func off(isSelected: Bool) -> SubtitlePickerEntry {
+        SubtitlePickerEntry(
+            id: "__off__",
+            kind: .off,
+            title: "Off",
+            subtitle: "Hide captions for this title",
+            providerName: "",
+            languageCode: nil,
+            isSelected: isSelected,
+            isSynced: false,
+            syncKey: nil
+        )
+    }
+}
+
 struct SubtitleStudioTrack: Identifiable, Sendable {
     let source: SubtitleSource
     let cues: [SubtitleCue]
@@ -301,6 +332,8 @@ final class PlayerSession: ObservableObject {
     @Published private(set) var playbackErrorMessage: String?
     @Published private(set) var playbackState: PlaybackSessionState = .idle
     @Published private(set) var recoveryAttemptCount = 0
+    @Published private(set) var subtitlePickerEntries: [SubtitlePickerEntry] = []
+    @Published private(set) var isSubtitleDiscoveryIdleHint = false
 
     var onEnded: (() -> Void)?
     var onSourceRefreshNeeded: (() async -> Bool)?
@@ -1914,6 +1947,102 @@ final class PlayerSession: ObservableObject {
             }
         }
         item.select(selection, in: group)
+        applySubtitleAppearance(to: item)
+        await refreshSubtitlePickerEntries()
+    }
+
+    func refreshSubtitlePickerEntries() async {
+        let selectedID = await selectedSubtitleSelectionID()
+        let selectedDisplay = await selectedSubtitleDisplayName()
+        let subtitlesOff = selectedID == nil && selectedDisplay == nil
+        var entries: [SubtitlePickerEntry] = [.off(isSelected: subtitlesOff)]
+
+        var seenSyncKeys = Set<String>()
+        let rankedTracks = subtitleStudioTracks.sorted {
+            SubtitleRanking.compare(
+                $0.source,
+                $1.source,
+                primary: SubtitleLanguage.canonicalCode(primarySubtitleLanguage),
+                secondary: SubtitleLanguage.canonicalCode(secondarySubtitleLanguage)
+            )
+        }
+
+        for track in rankedTracks {
+            guard seenSyncKeys.insert(track.source.syncKey).inserted else { continue }
+            let selectionID = subtitleRenditions.first {
+                $0.subtitle.syncKey == track.source.syncKey
+            }.flatMap { rendition in
+                subtitleRenditionsBySelectionID.first { $0.value.subtitle.syncKey == rendition.subtitle.syncKey }?.key
+            }
+            let displayMatch = selectedDisplay.map {
+                track.source.label.localizedCaseInsensitiveCompare($0) == .orderedSame
+                    || track.displayName.localizedCaseInsensitiveCompare($0) == .orderedSame
+            } ?? false
+            let selectionMatch = selectionID.map { $0 == selectedID } ?? false
+            let syncMatch = selectedID.flatMap { subtitleRenditionsBySelectionID[$0]?.subtitle.syncKey } == track.source.syncKey
+            let isSelected = !subtitlesOff && (selectionMatch || displayMatch || syncMatch)
+            let isSynced = subtitleRenditions.contains {
+                $0.subtitle.syncKey == track.source.syncKey && $0.syncVersionID != nil
+            }
+            let language = SubtitleLanguage.displayName(track.source.languageCode)
+            entries.append(
+                SubtitlePickerEntry(
+                    id: track.source.syncKey,
+                    kind: .track,
+                    title: language,
+                    subtitle: "\(track.source.providerName) · \(track.source.label)",
+                    providerName: track.source.providerName,
+                    languageCode: track.source.canonicalLanguageCode,
+                    isSelected: isSelected,
+                    isSynced: isSynced,
+                    syncKey: track.source.syncKey
+                )
+            )
+        }
+
+        subtitlePickerEntries = entries
+    }
+
+    func selectSubtitlePickerEntry(_ entry: SubtitlePickerEntry) async {
+        subtitleSelectionAuthority.recordExplicitUserSelection()
+        switch entry.kind {
+        case .off:
+            subtitleUserRequestedOn = false
+            await selectSubtitle(displayName: nil)
+            onSubtitleVisibilityChanged?(false)
+            onSubtitleSelectionChanged?(
+                SubtitleSelectionPreference(baseSubtitleKey: "__subtitles_off__", syncVersionID: nil)
+            )
+        case .track:
+            subtitleUserRequestedOn = true
+            onSubtitleVisibilityChanged?(true)
+            if let syncKey = entry.syncKey,
+               let selectionID = subtitleRenditionsBySelectionID.first(where: {
+                   $0.value.subtitle.syncKey == syncKey
+               })?.key {
+                await selectSubtitle(displayName: selectionID)
+                if let rendition = subtitleRenditionsBySelectionID[selectionID] {
+                    onSubtitleSelectionChanged?(
+                        SubtitleSelectionPreference(
+                            baseSubtitleKey: rendition.subtitle.syncKey,
+                            syncVersionID: rendition.syncVersionID
+                        )
+                    )
+                }
+            } else if let syncKey = entry.syncKey,
+                      let track = subtitleStudioTracks.first(where: { $0.source.syncKey == syncKey }) {
+                await selectSubtitle(displayName: track.source.label)
+                onSubtitleSelectionChanged?(
+                    SubtitleSelectionPreference(baseSubtitleKey: track.source.syncKey, syncVersionID: nil)
+                )
+            }
+        }
+        await refreshSubtitlePickerEntries()
+    }
+
+    func applySubtitleAppearance(to item: AVPlayerItem? = nil) {
+        let target = item ?? player.currentItem
+        target?.textStyleRules = SubtitleAppearancePreferences.textStyleRules()
     }
 
     private func loadSubtitleRenditions(
@@ -2756,6 +2885,8 @@ final class PlayerSession: ObservableObject {
             let audio = await preferredOption(in: audioGroup.options, languageCodes: [audioLanguage, "en"])
             if let audio { player.currentItem?.select(audio, in: audioGroup) }
         }
+        applySubtitleAppearance()
+        await refreshSubtitlePickerEntries()
     }
 
     private func recordSubtitleVisibilityChange(for item: AVPlayerItem) {
@@ -3571,6 +3702,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
     let onQualityChanged: (StreamQuality?) -> Void
     let onAdjustSubtitleTiming: (Double) -> Void
     let onOpenSubtitleSync: () -> Void
+    let onOpenSubtitlePicker: () -> Void
     let onRetryPlayback: () -> Void
     let onTryNextSource: () -> Void
     let onZoomChanged: (Bool) -> Void
@@ -3584,6 +3716,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onQualityChanged: onQualityChanged,
             onAdjustSubtitleTiming: onAdjustSubtitleTiming,
             onOpenSubtitleSync: onOpenSubtitleSync,
+            onOpenSubtitlePicker: onOpenSubtitlePicker,
             onRetryPlayback: onRetryPlayback,
             onTryNextSource: onTryNextSource,
             isZoomedToFill: isZoomedToFill,
@@ -3653,6 +3786,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
         private let onQualityChanged: (StreamQuality?) -> Void
         private let onAdjustSubtitleTiming: (Double) -> Void
         private let onOpenSubtitleSync: () -> Void
+        private let onOpenSubtitlePicker: () -> Void
         private let onRetryPlayback: () -> Void
         private let onTryNextSource: () -> Void
         private let onWillDismiss: () -> Void
@@ -3700,6 +3834,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onQualityChanged: @escaping (StreamQuality?) -> Void,
             onAdjustSubtitleTiming: @escaping (Double) -> Void,
             onOpenSubtitleSync: @escaping () -> Void,
+            onOpenSubtitlePicker: @escaping () -> Void,
             onRetryPlayback: @escaping () -> Void,
             onTryNextSource: @escaping () -> Void,
             isZoomedToFill: Bool,
@@ -3712,6 +3847,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             self.onQualityChanged = onQualityChanged
             self.onAdjustSubtitleTiming = onAdjustSubtitleTiming
             self.onOpenSubtitleSync = onOpenSubtitleSync
+            self.onOpenSubtitlePicker = onOpenSubtitlePicker
             self.onRetryPlayback = onRetryPlayback
             self.onTryNextSource = onTryNextSource
             prefersZoomedToFill = isZoomedToFill
@@ -4229,6 +4365,13 @@ struct NativePlayerController: UIViewControllerRepresentable {
             if subtitleTimingAvailable {
                 var subtitleActions: [UIMenuElement] = [
                     UIAction(
+                        title: "Browse subtitle tracks",
+                        subtitle: "Provider · language · sync",
+                        image: UIImage(systemName: "list.bullet.rectangle")
+                    ) { [weak self] _ in
+                        self?.onOpenSubtitlePicker()
+                    },
+                    UIAction(
                         title: "Subtitle Sync Studio",
                         subtitle: "Fine-tune timing for this title",
                         image: UIImage(systemName: "captions.bubble")
@@ -4255,16 +4398,17 @@ struct NativePlayerController: UIViewControllerRepresentable {
                         children: subtitleActions
                     )
                 )
+            } else {
+                sections.append(
+                    UIAction(
+                        title: "Browse subtitle tracks",
+                        subtitle: "CC list plus online catalogs",
+                        image: UIImage(systemName: "list.bullet.rectangle")
+                    ) { [weak self] _ in
+                        self?.onOpenSubtitlePicker()
+                    }
+                )
             }
-
-            sections.append(
-                UIAction(
-                    title: "Turn captions on/off",
-                    subtitle: "Use the player’s CC button for tracks",
-                    image: UIImage(systemName: "captions.bubble"),
-                    attributes: [.disabled]
-                ) { _ in }
-            )
 
             settingsButton.menu = UIMenu(title: "Playback Settings", children: sections)
         }

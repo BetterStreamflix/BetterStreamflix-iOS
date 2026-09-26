@@ -156,7 +156,7 @@ struct FirstLaunchSetupView: View {
                         }
                     }
                     Toggle("Show subtitles by default", isOn: $subtitlesEnabledByDefault)
-                    Text("You can turn captions on or off anytime with the player’s CC button. Enable SubDL, OpenSubtitles, and other catalogs later in Settings → Subtitle Sources.")
+                    Text("You can turn captions on or off anytime from the player’s subtitle browser (Playback Settings) or the CC button. Enable SubDL, OpenSubtitles, and other catalogs later in Settings → Subtitle Sources.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Picker("Anime audio", selection: $animeAudioLanguage) {

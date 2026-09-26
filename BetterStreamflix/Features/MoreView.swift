@@ -37,7 +37,7 @@ struct MoreView: View {
                         Divider().opacity(0.35)
                         hubRow(
                             title: "Settings",
-                            subtitle: "Player, languages, backup",
+                            subtitle: "Subtitles, captions, player, backup",
                             systemImage: "gearshape.fill"
                         ) {
                             path.append(MoreRoute.settings)

@@ -130,6 +130,8 @@ struct SettingsView: View {
     @State private var isImportingUserData = false
     @State private var pendingImport: PendingUserDataImport?
     @State private var backupNotice: UserDataBackupNotice?
+    @State private var subtitleCacheSummary = "Calculating…"
+    @State private var isClearingSubtitleCache = false
     /// When pushed from More, use nav chrome instead of the large overlapping page title.
     var showsInlineTitle: Bool = false
 
@@ -209,6 +211,45 @@ struct SettingsView: View {
                 }
                 .listRowBackground(AppTheme.surface)
                 Section {
+                    Picker("Caption size", selection: Binding(
+                        get: { SubtitleAppearancePreferences.size },
+                        set: { SubtitleAppearancePreferences.size = $0 }
+                    )) {
+                        ForEach(SubtitleAppearancePreferences.Size.allCases) { size in
+                            Text(size.title).tag(size)
+                        }
+                    }
+                    .tint(environment.theme.accent)
+
+                    Picker("Caption style", selection: Binding(
+                        get: { SubtitleAppearancePreferences.style },
+                        set: { SubtitleAppearancePreferences.style = $0 }
+                    )) {
+                        ForEach(SubtitleAppearancePreferences.Style.allCases) { style in
+                            Text(style.title).tag(style)
+                        }
+                    }
+                    .tint(environment.theme.accent)
+
+                    Picker("Caption color", selection: Binding(
+                        get: { SubtitleAppearancePreferences.color },
+                        set: { SubtitleAppearancePreferences.color = $0 }
+                    )) {
+                        ForEach(SubtitleAppearancePreferences.ColorOption.allCases) { color in
+                            Text(color.title).tag(color)
+                        }
+                    }
+                    .tint(environment.theme.accent)
+
+                    Text("Appearance applies to captions in the player (including injected tracks). Open Playback Settings → Browse subtitle tracks while watching.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Caption Appearance")
+                }
+                .listRowBackground(AppTheme.surface)
+
+                Section {
                     Picker("When to load subtitles", selection: $subtitleLoadingModeRawValue) {
                         ForEach(SubtitleLoadingMode.allCases) { mode in
                             Text(mode.title).tag(mode.rawValue)
@@ -237,16 +278,43 @@ struct SettingsView: View {
                     }
 
                     Text(
-                        "Turn these on to search online subtitle catalogs while a title plays. Fewer sources can speed up startup. OpenSubtitles was previously registered but not exposed here."
+                        "Choose which catalogs BetterStreamflix searches while a title plays. Fewer sources can speed up startup."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 } header: {
                     Text("Subtitle Sources")
                 } footer: {
-                    Text("Settings → Subtitle Sources is where you enable SubDL, OpenSubtitles, Wizdom, Ktuvit, and Stremio. In the player, use the CC control to show or hide captions.")
+                    Text("In the player open Playback Settings → Browse subtitle tracks for a provider-aware list. The native CC button still works for quick on/off.")
                 }
                 .listRowBackground(AppTheme.surface)
+
+                Section {
+                    LabeledContent("Cached tracks") {
+                        Text(subtitleCacheSummary)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button(role: .destructive) {
+                        Task { await clearSubtitleCache() }
+                    } label: {
+                        if isClearingSubtitleCache {
+                            ProgressView()
+                        } else {
+                            Label("Clear subtitle cache", systemImage: "trash")
+                        }
+                    }
+                    .disabled(isClearingSubtitleCache)
+                    Text("Downloaded subtitle cues are stored on device for faster replay. Clearing does not remove saved sync offsets.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Subtitle Cache")
+                }
+                .listRowBackground(AppTheme.surface)
+                .task {
+                    await refreshSubtitleCacheSummary()
+                }
+
                 Section("Backup & Restore") {
                     Button {
                         prepareExport()
@@ -394,7 +462,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.1.3"
+        ) as? String ?? "0.1.4"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"
@@ -416,6 +484,23 @@ struct SettingsView: View {
         .filter { $0 }
         .count
         return SubtitleProviderPreferences.summary(enabledCount: count)
+    }
+
+    private func refreshSubtitleCacheSummary() async {
+        let stats = await SubtitleRenditionCache.shared.statistics()
+        if stats.entryCount == 0 {
+            subtitleCacheSummary = "Empty"
+        } else {
+            subtitleCacheSummary = "\(stats.entryCount) · \(stats.formattedSize)"
+        }
+    }
+
+    private func clearSubtitleCache() async {
+        isClearingSubtitleCache = true
+        defer { isClearingSubtitleCache = false }
+        await SubtitleRenditionCache.shared.removeAll()
+        await refreshSubtitleCacheSummary()
+        DesignTokens.Haptics.selection()
     }
 
     private var exportFilename: String {

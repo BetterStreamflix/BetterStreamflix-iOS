@@ -1,7 +1,7 @@
 import Foundation
 
-/// Legacy OpenSubtitles REST search (`rest.opensubtitles.org`), matching Android `OpenSubtitles`.
-/// Returns direct download URLs; the player loads them via the shared subtitle pipeline.
+/// OpenSubtitles legacy REST search (`rest.opensubtitles.org`), matching Android `OpenSubtitles`.
+/// Queries primary and secondary preferred languages and ranks results for the player pipeline.
 struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
     let id = "opensubtitles"
     let displayName = "OpenSubtitles"
@@ -18,7 +18,7 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
             return [
                 defaults.string(forKey: "player.subtitleLanguage.primary"),
                 defaults.string(forKey: "player.subtitleLanguage.secondary"),
-            ].compactMap { $0 }
+            ].compactMap { $0 }.filter { !$0.isEmpty }
         }
     ) {
         self.client = client
@@ -27,26 +27,41 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
     }
 
     func subtitles(for lookup: SubtitleLookupRequest) async throws -> [SubtitleSource] {
+        let languages = preferredLanguageCodes()
+        let queries: [String] = {
+            let codes = Array(
+                Set(
+                    languages
+                        .map { String($0.lowercased().prefix(3)) }
+                        .filter { !$0.isEmpty }
+                )
+            )
+            return codes.isEmpty ? ["all"] : codes
+        }()
+
+        var combined: [SubtitleSource] = []
+        var seen = Set<String>()
+        for language in queries {
+            let batch = await search(lookup: lookup, languageID: language)
+            for subtitle in batch where seen.insert(subtitle.id).inserted {
+                combined.append(subtitle)
+            }
+        }
+        return SubtitleRanking.sort(combined)
+    }
+
+    private func search(lookup: SubtitleLookupRequest, languageID: String) async -> [SubtitleSource] {
         var segments: [String] = []
         let imdb = lookup.imdbID.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "tt", with: "", options: [.anchored, .caseInsensitive])
         if !imdb.isEmpty { segments.append("imdbid-\(imdb)") }
         if let season = lookup.seasonNumber { segments.append("season-\(season)") }
         if let episode = lookup.episodeNumber { segments.append("episode-\(episode)") }
-        let langs = preferredLanguageCodes()
-            .map { $0.lowercased().prefix(3) }
-            .filter { !$0.isEmpty }
-        if let primary = langs.first {
-            segments.append("sublanguageid-\(primary)")
-        } else {
-            segments.append("sublanguageid-all")
-        }
+        segments.append("sublanguageid-\(languageID)")
         guard !segments.isEmpty else { return [] }
 
         let path = "search/" + segments.joined(separator: "/")
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
-            throw AppError.invalidURL
-        }
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else { return [] }
         var request = URLRequest(url: url)
         request.setValue("TemporaryUserAgent", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -75,13 +90,25 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
             let fileID = row.idSubtitleFile ?? row.subHash ?? link.absoluteString
             let stableID = "\(id):\(fileID)"
             guard seen.insert(stableID).inserted else { return nil }
-            let label = (row.subFileName ?? row.movieReleaseName ?? "OpenSubtitles")
+            let release = row.movieReleaseName?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            let fileName = row.subFileName?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let languageName = SubtitleLanguage.displayName(row.iso639 ?? row.subLanguageID)
+            let detail = [release, fileName]
+                .compactMap { $0 }
+                .first { !$0.isEmpty }
+            let label: String
+            if let detail, !detail.isEmpty {
+                label = "\(languageName) · \(detail)"
+            } else {
+                label = languageName
+            }
             return SubtitleSource(
                 id: stableID,
                 providerID: id,
                 providerName: displayName,
-                label: label.isEmpty ? "OpenSubtitles" : label,
+                label: label,
                 languageCode: row.iso639 ?? row.subLanguageID,
                 url: link,
                 isDefault: false,

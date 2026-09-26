@@ -322,8 +322,12 @@ actor SubtitleProviderRegistry {
     }
 
     private nonisolated static func subtitleOrder(_ left: SubtitleSource, _ right: SubtitleSource) -> Bool {
-        if left.providerName != right.providerName { return left.providerName < right.providerName }
-        return left.label.localizedStandardCompare(right.label) == .orderedAscending
+        SubtitleRanking.compare(
+            left,
+            right,
+            primary: SubtitleRanking.preferredLanguageCodes().primary,
+            secondary: SubtitleRanking.preferredLanguageCodes().secondary
+        )
     }
 
     private nonisolated static func milliseconds(_ duration: Duration) -> Int64 {
