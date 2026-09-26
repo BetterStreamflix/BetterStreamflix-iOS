@@ -66,7 +66,7 @@ struct StremioAddonsSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await store.probePopularPresets()
-            if let pending = StremioInstallDeepLink.consumePending() {
+            if let pending = StremioInstallDeepLink.peekPending() {
                 installDraft = pending
                 banner = "Ready to install from link"
             }
