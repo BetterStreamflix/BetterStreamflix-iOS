@@ -347,41 +347,15 @@ struct TrendingHeroCarousel: View {
             .offset(x: titleContentOffset)
             .opacity(titleContentOpacity)
 
-            HStack(spacing: 10) {
-                Button {
-                    openCurrentDetails()
-                } label: {
-                    Group {
-                        if isCurrentTitleResolving {
-                            ProgressView().tint(.black)
-                        } else {
-                            Label("View Details", systemImage: "info.circle.fill")
-                                .labelStyle(.titleAndIcon)
-                        }
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .buttonStyle(
-                    AppPrimaryButtonStyle(
-                        glow: .white.opacity(0.35),
-                        minHeight: 44,
-                        horizontalPadding: 14,
-                        verticalPadding: 10
-                    )
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .allowsHitTesting(!isCurrentTitleResolving)
-
-                FeaturedAddToListButton(
+            HStack(spacing: 12) {
+                FeaturedCTACluster(
+                    isResolving: isCurrentTitleResolving,
                     isInWatchlist: isCurrentTitleInWatchlist,
-                    isDisabled: isCurrentTitleResolving
-                ) {
-                    onToggleWatchlist(currentTitle)
-                }
+                    onDetails: openCurrentDetails,
+                    onToggleWatchlist: { onToggleWatchlist(currentTitle) }
+                )
             }
-            .frame(height: 44)
+            .frame(height: 48)
             .padding(.horizontal, 16)
 
         }
@@ -493,6 +467,61 @@ struct TrendingHeroCarousel: View {
 
 }
 
+struct FeaturedCTACluster: View {
+    let isResolving: Bool
+    let isInWatchlist: Bool
+    let onDetails: () -> Void
+    let onToggleWatchlist: () -> Void
+
+    var body: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer(spacing: 12) {
+                    clusterBody
+                }
+            } else {
+                clusterBody
+            }
+        }
+    }
+
+    private var clusterBody: some View {
+        HStack(spacing: 12) {
+            Button(action: onDetails) {
+                Group {
+                    if isResolving {
+                        ProgressView().tint(.white)
+                    } else {
+                        Label("View Details", systemImage: "info.circle.fill")
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .glassEffectWithFallback(in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.white.opacity(0.28), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+            .allowsHitTesting(!isResolving)
+            .accessibilityLabel("View Details")
+
+            FeaturedAddToListButton(
+                isInWatchlist: isInWatchlist,
+                isDisabled: isResolving,
+                action: onToggleWatchlist
+            )
+        }
+    }
+}
+
 struct FeaturedAddToListButton: View {
     let isInWatchlist: Bool
     var isDisabled: Bool = false
@@ -514,37 +543,29 @@ struct FeaturedAddToListButton: View {
         } label: {
             ZStack {
                 if ring {
-                    Capsule()
+                    Circle()
                         .stroke(.white.opacity(0.55), lineWidth: 2)
-                        .scaleEffect(pulse ? 1.16 : 1)
+                        .scaleEffect(pulse ? 1.22 : 1)
                         .opacity(pulse ? 0 : 0.85)
                 }
 
-                HStack(spacing: 7) {
-                    Image(systemName: isInWatchlist ? "checkmark" : "plus")
-                        .font(.subheadline.weight(.bold))
-                        .contentTransition(.symbolEffect(.replace))
-                        .scaleEffect(pulse ? 1.22 : 1)
-                    Text(isInWatchlist ? "In My List" : "Add to List")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Image(systemName: isInWatchlist ? "checkmark" : "plus")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+                    .contentTransition(.symbolEffect(.replace))
+                    .scaleEffect(pulse ? 1.18 : 1)
             }
-            .contentShape(Capsule())
+            .frame(width: 48, height: 48)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .frame(height: 44)
-        .glassEffectWithFallback(in: Capsule())
+        .glassEffectWithFallback(in: Circle())
         .overlay {
-            Capsule()
-                .stroke(.white.opacity(0.24), lineWidth: 1)
+            Circle()
+                .stroke(.white.opacity(0.28), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.28), radius: 10, y: 3)
-        .scaleEffect(pulse ? 1.05 : 1)
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+        .scaleEffect(pulse ? 1.06 : 1)
         .animation(DesignTokens.Motion.watchlistBurst, value: pulse)
         .animation(DesignTokens.Motion.watchlistBurst, value: isInWatchlist)
         .accessibilityLabel(isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist")
@@ -657,30 +678,26 @@ struct CenteredHeroArtwork: View {
     let data: Data?
 
     var body: some View {
-        Color.clear
-            .overlay {
-                Group {
-                    if let data, let image = UIImage(data: data) {
-                        if UIDevice.current.userInterfaceIdiom == .pad {
-                            GeometryReader { proxy in
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                            }
-                        } else {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        }
-                    } else {
-                        Rectangle().fill(.gray.opacity(0.16))
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        GeometryReader { proxy in
+            if let data, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    // Explicit pixel frame — infinity max frames can letterbox
+                    // inside Color.clear overlays on some devices.
+                    .frame(
+                        width: proxy.size.width,
+                        height: proxy.size.height,
+                        alignment: UIDevice.current.userInterfaceIdiom == .pad ? .top : .center
+                    )
+                    .clipped()
+            } else {
+                Rectangle()
+                    .fill(.gray.opacity(0.16))
+                    .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .clipped()
+        }
+        .clipped()
     }
 }
 

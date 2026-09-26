@@ -505,6 +505,10 @@ actor TMDBClient {
                 preferred.append(contentsOf: images.preferredTextlessHeroURLs())
             }
             preferred.append(contentsOf: images.preferredHeroURLs(language: preferredLanguage))
+            // Prefer landscape pixels for Detail/Featured tall frames.
+            if let landscape = await firstLandscapeHeroImage(from: preferred) {
+                return landscape
+            }
             let preferredResult = await firstLoadableImage(from: preferred, excluding: attemptedURLs)
             attemptedURLs = preferredResult.attemptedURLs
             if let data = preferredResult.data {
@@ -651,7 +655,7 @@ actor TMDBClient {
         }()
 
         var candidateURLs: [URL] = []
-        // Official title backdrop first — avoids gallery collage / strip arts.
+        // Official title backdrop first — Toy Story–style cinematic heroes.
         if let fallbackBackdropURL {
             candidateURLs.append(fallbackBackdropURL)
         }
@@ -665,8 +669,31 @@ actor TMDBClient {
             candidateURLs.append(fallbackPosterURL)
         }
 
-        let artwork = await firstLoadableImage(from: candidateURLs, excluding: []).data
+        // Prefer a landscape still so the tall Featured frame fills edge-to-edge
+        // without portrait letterboxing / strip crops.
+        let artwork = await firstLandscapeHeroImage(from: candidateURLs)
+            ?? await firstLoadableImage(from: candidateURLs, excluding: []).data
         return (artwork, await logo)
+    }
+
+    /// First decodable image whose pixel aspect is cinematic landscape.
+    private func firstLandscapeHeroImage(from urls: [URL]) async -> Data? {
+        var attempted = Set<URL>()
+        for url in urls where attempted.insert(url).inserted {
+            guard let data = try? await imageData(for: url),
+                  Self.isLandscapeHeroImage(data) else { continue }
+            return data
+        }
+        return nil
+    }
+
+    private nonisolated static func isLandscapeHeroImage(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+              let height = properties[kCGImagePropertyPixelHeight] as? CGFloat,
+              height > 1 else { return false }
+        return (width / height) >= 1.45
     }
 
     func imageData(for url: URL) async throws -> Data {

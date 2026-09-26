@@ -343,15 +343,18 @@ extension View {
         buttonStyle(PressablePosterButtonStyle())
     }
 
-    /// Liquid Glass–ready chrome. Soft interactive material that reads as glass on
-    /// current SDKs; when building with an iOS 26+ SDK / Xcode that ships
-    /// `glassEffect`, swap this helper to the system Liquid Glass APIs.
+    /// Liquid Glass when the SDK provides it; otherwise soft material chrome.
+    @ViewBuilder
     func glassEffectWithFallback(in shape: some Shape = .capsule) -> some View {
-        self
-            .background(.ultraThinMaterial, in: shape)
-            .overlay {
-                shape.stroke(Color.white.opacity(0.14), lineWidth: 0.8)
-            }
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            self
+                .background(.ultraThinMaterial, in: shape)
+                .overlay {
+                    shape.stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                }
+        }
     }
 
     func errorAlert(_ message: Binding<String?>) -> some View {

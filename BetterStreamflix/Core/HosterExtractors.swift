@@ -462,16 +462,10 @@ enum HosterExtractor {
     static func resolveFirst(_ mirrors: [HosterMirror], referer: URL?) async throws -> PlaybackSource {
         // Race mirrors — first healthy hoster wins (serial tries were a major
         // meinecloud / Kinoger stall vs Android's faster first-play path).
-        try await withThrowingTaskGroup(of: PlaybackSource?.self) { group in
+        let winner = await withTaskGroup(of: PlaybackSource?.self) { group -> PlaybackSource? in
             for mirror in mirrors.prefix(4) {
                 group.addTask {
-                    do {
-                        return try await resolve(mirror.url, referer: referer, serverName: mirror.name)
-                    } catch where error.isCancellation {
-                        throw error
-                    } catch {
-                        return nil
-                    }
+                    try? await resolve(mirror.url, referer: referer, serverName: mirror.name)
                 }
             }
             for await result in group {
@@ -480,8 +474,10 @@ enum HosterExtractor {
                     return result
                 }
             }
-            throw AppError.noStream
+            return nil
         }
+        guard let winner else { throw AppError.noStream }
+        return winner
     }
 
     static func headers(referer: URL?, origin: URL? = nil) -> [String: String] {
