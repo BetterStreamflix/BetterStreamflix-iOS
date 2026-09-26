@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import BetterStreamflix
 
-@Suite("External Stremio source provider")
+@Suite("Stremio addon protocol & playback")
 struct StremioAddonProviderTests {
     private let baseURL = URL(string: "https://addon.example/config")!
 
@@ -27,7 +27,7 @@ struct StremioAddonProviderTests {
 
         #expect(client.requestedPaths == ["/config/stream/movie/tt0133093.json"])
         #expect(candidates.count == 2)
-        let direct = try #require(candidates.first { $0.providerName == "2Peckle" })
+        let direct = try #require(candidates.first { $0.providerName.contains("2Peckle") })
         #expect(direct.preference.audioLanguage == "en")
         #expect(direct.displayMetadata?.quality == "1080p")
         #expect(direct.displayMetadata?.sizeBytes == 4_294_967_296)
@@ -41,6 +41,8 @@ struct StremioAddonProviderTests {
         #expect(stream.label.contains("2Peckle"))
         #expect(stream.label.contains("1080p"))
         #expect(!stream.label.lowercased().contains("pengu"))
+        let diag = StremioResolveDiagnosticsStore.current()
+        #expect(diag.skippedTorrent >= 1)
     }
 
     @Test("Series routes use the Stremio season and episode identifier")
@@ -55,7 +57,22 @@ struct StremioAddonProviderTests {
         #expect(client.requestedPaths == ["/config/stream/series/tt0944947:2:3.json"])
     }
 
-    @Test("External subtitles have stable identities, canonical languages, and provider labels")
+    @Test("TMDb identifiers are used when IMDb is missing")
+    func tmdbIdentifierRouting() async throws {
+        let client = StremioFixtureClient(streamBody: #"{"streams":[]}"#)
+        let provider = StremioPlaybackProvider(client: client, baseURL: baseURL)
+        let movie = MediaItem(
+            id: "movie",
+            providerID: "tmdb",
+            kind: .movie,
+            title: "Example",
+            tmdbID: 603
+        )
+        _ = try await provider.candidates(for: .init(request: .init(media: movie, episode: nil)))
+        #expect(client.requestedPaths == ["/config/stream/movie/tmdb:603.json"])
+    }
+
+    @Test("Stremio subtitles have stable identities, canonical languages, and provider labels")
     func subtitles() async throws {
         let body = #"""
         {"subtitles":[
@@ -75,13 +92,13 @@ struct StremioAddonProviderTests {
         #expect(subtitles.first?.providerName == "MovieBox")
         #expect(subtitles.first?.languageCode == "en")
         #expect(subtitles.first?.userFacingDisplayName == "English - MovieBox - English")
-        #expect(subtitles.last?.providerName == "External")
+        #expect(subtitles.last?.providerName == "Stremio")
         #expect(subtitles.last?.languageCode == "de")
-        #expect(subtitles.last?.userFacingDisplayName == "German - External - German")
+        #expect(subtitles.last?.userFacingDisplayName == "German - Stremio - German")
         #expect(subtitles.allSatisfy { !$0.id.contains("Policy=") && !$0.id.contains("token=") })
     }
 
-    @Test("Missing and malformed IMDb identifiers make no request")
+    @Test("Missing and malformed IMDb identifiers without TMDb make no request")
     func missingIdentifier() async throws {
         let client = StremioFixtureClient(streamBody: #"{"streams":[]}"#)
         let provider = StremioPlaybackProvider(client: client, baseURL: baseURL)
@@ -106,7 +123,8 @@ struct StremioAddonProviderTests {
                               title: "Example", imdbID: "tt0133093")
         let candidates = try await provider.candidates(for: .init(request: .init(media: movie, episode: nil)))
         #expect(candidates.count == 1)
-        #expect(candidates.first?.providerName == "CDN 1080p")
+        #expect(candidates.first?.providerName.contains("CDN 1080p") == true)
+        #expect(StremioResolveDiagnosticsStore.current().skippedTorrent >= 1)
     }
 
     @Test("Multi-addon playback merges stream candidates")
@@ -180,6 +198,86 @@ struct StremioAddonProviderTests {
         let addon = StremioAddonClient(client: client, baseURL: baseURL)
         _ = try await addon.catalog(type: "movie", id: "top", extras: ["search": "matrix"])
         #expect(client.requestedPaths == ["/config/catalog/movie/top/search=matrix.json"])
+    }
+
+    @Test("Catalog pagination encodes skip extras")
+    func catalogSkipPagination() async throws {
+        let client = StremioFixtureClient(catalogBody: #"{"metas":[]}"#)
+        let addon = StremioAddonClient(client: client, baseURL: baseURL)
+        _ = try await addon.catalog(type: "movie", id: "top", extras: ["skip": "40"])
+        #expect(client.requestedPaths == ["/config/catalog/movie/top/skip=40.json"])
+    }
+
+    @Test("Debrid URL builder injects Real-Debrid into Torrentio manifests")
+    func debridURLBuilder() {
+        let base = URL(string: "https://torrentio.strem.fun/manifest.json")!
+        let url = StremioDebridURLBuilder.configuredManifestURL(
+            for: "com.stremio.torrentio.addon",
+            service: .realDebrid,
+            token: "TOKEN123",
+            baseManifestURL: base
+        )
+        #expect(url?.absoluteString.contains("realdebrid=TOKEN123") == true)
+        #expect(url?.lastPathComponent == "manifest.json")
+        #expect(StremioDebridURLBuilder.looksConfigured(url!))
+        #expect(!StremioDebridURLBuilder.looksConfigured(base))
+    }
+
+    @Test("Deep link install queues betterstreamflix and stremio URLs")
+    func deepLinkInstall() {
+        let stremio = URL(string: "stremio://v3-cinemeta.strem.io/manifest.json")!
+        #expect(StremioInstallDeepLink.handle(url: stremio))
+        #expect(StremioInstallDeepLink.consumePending()?.contains("v3-cinemeta.strem.io") == true)
+
+        let app = URL(string: "betterstreamflix://install?url=https%3A%2F%2Fopensubtitles-v3.strem.io%2Fmanifest.json")!
+        #expect(StremioInstallDeepLink.handle(url: app))
+        #expect(StremioInstallDeepLink.consumePending()?.contains("opensubtitles-v3") == true)
+    }
+
+    @Test("Resolve diagnostics explain torrent-only empty states")
+    func diagnosticsCopy() {
+        var diag = StremioResolveDiagnostics()
+        diag.queriedAddons = 2
+        diag.skippedTorrent = 12
+        diag.debridConfigured = false
+        #expect(diag.userFacingSummary.lowercased().contains("debrid"))
+        #expect(diag.userFacingSummary.lowercased().contains("torrent"))
+    }
+
+    @Test("Manifest behaviorHints decode configurable and adult flags")
+    func behaviorHintsDecode() throws {
+        let json = Data(#"""
+        {"id":"x","name":"X","resources":["stream"],"types":["movie"],
+         "behaviorHints":{"adult":true,"p2p":true,"configurable":true,"configurationRequired":true},
+         "catalogs":[]}
+        """#.utf8)
+        let manifest = try JSONDecoder().decode(StremioManifest.self, from: json)
+        #expect(manifest.isAdult)
+        #expect(manifest.isP2P)
+        #expect(manifest.isConfigurable)
+        #expect(manifest.requiresConfiguration)
+        #expect(manifest.accepts(resource: "stream", type: "movie", id: "tt0133093"))
+    }
+
+    @Test("Resource idPrefixes gate unsupported identifiers")
+    func resourceIdPrefixGuard() throws {
+        let json = Data(#"""
+        {"id":"x","name":"X","resources":[{"name":"stream","types":["movie"],"idPrefixes":["tt"]}],
+         "types":["movie"],"catalogs":[]}
+        """#.utf8)
+        let manifest = try JSONDecoder().decode(StremioManifest.self, from: json)
+        #expect(manifest.accepts(resource: "stream", type: "movie", id: "tt0133093"))
+        #expect(!manifest.accepts(resource: "stream", type: "series", id: "tt0133093"))
+        #expect(!manifest.accepts(resource: "stream", type: "movie", id: "tmdb:603"))
+    }
+
+    @Test("Debrid stream presets are flagged for one-tap install")
+    func debridPresetFlags() {
+        #expect(StremioCuratedCatalog.popularPresets.contains {
+            StremioCuratedCatalog.isDebridStreamPreset($0) && $0.name == "Torrentio"
+        })
+        #expect(StremioCuratedCatalog.popularPresets.first { $0.name == "WatchHub" }
+            .map { !StremioCuratedCatalog.isDebridStreamPreset($0) } == true)
     }
 }
 

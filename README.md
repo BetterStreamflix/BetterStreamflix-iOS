@@ -20,7 +20,7 @@ No third-party Swift packages are required.
 
 ## Version
 
-Current marketing version: **0.1.11**. CI advances the build number on each release.
+Current marketing version: **0.1.12**. CI advances the build number on each release.
 
 ## Unsigned IPA (GitHub Actions + Releases)
 
@@ -38,22 +38,22 @@ Every push to `main` runs **Unsigned IPA** (`.github/workflows/unsigned-ipa.yml`
 
 ### In-app Check for Updates
 
-**More → Check for updates** (or Settings → About) fetches the public feed at  
-`https://raw.githubusercontent.com/BetterStreamflix/BetterStreamflix-update-feed/main/ios/latest.json`,  
+**More → Check for updates** (or Settings → About) fetches the public feed at
+`https://raw.githubusercontent.com/BetterStreamflix/BetterStreamflix-update-feed/main/ios/latest.json`,
 compares version/build, and offers Download / up-to-date / retry states. No personal access token is embedded in the app.
 
-Locally: `./build-unsigned-ipa.sh 0.1.11`.
+Locally: `./build-unsigned-ipa.sh 0.1.12`.
 
 ## Features
 
 - Cinematic Home hero with Liquid Glass action cluster, Continue Watching, Watchlist feedback, and TMDB shelves
-- **Stremio** — real remote community plugins (catalog / stream / subtitles), install-by-URL, presets, health, hub search; built-in HTTP is Core-only (not listed as a plugin)
+- **Stremio** — Debrid-first community plugins (catalog / stream / subtitles), install-by-URL + deep links, one-tap Debrid presets, hub/Movies/Series/Search shelves, health + smoke, Addon Store; built-in HTTP is Core-only (not listed as a plugin)
 - Library tab (Continue / Watchlist / Watched) with glass empty states
 - Movies & Series catalogs, Search with glass recent chips
 - Detail with tapable cast → full actor profiles, seasons/episodes, Play / My List
 - Logo-only splash; branded About support CTAs (Coffee, Telegram, Discord, Patreon)
 - AVPlayer HLS with source/quality, double-tap ±10s, volume/brightness pans, glass controls, PiP / AirPlay
-- Settings / About: themes, languages, Stremio plugins, backup, updates via Releases, community CTAs, credits
+- Settings / About: themes, languages, Stremio plugins + Debrid, backup, updates via Releases, community CTAs, credits
 
 ## Legal
 

@@ -1,28 +1,38 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Full Stremio plugin manager — Liquid Glass, Debrid-aware presets, logos, config flow.
 struct StremioAddonsSettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @ObservedObject private var store = StremioAddonStore.shared
+    @ObservedObject private var debrid = StremioDebridStore.shared
     @State private var installDraft = ""
     @State private var isInstalling = false
     @State private var banner: String?
     @State private var confirmRemove: InstalledStremioAddon?
     @State private var isRefreshingHealth = false
     @State private var presetFilter: StremioAddonKind? = nil
+    @State private var showExporter = false
+    @State private var showImporter = false
+    @State private var exportDocument: StremioAddonListDocument?
     @FocusState private var installFocused: Bool
 
     var body: some View {
         List {
             heroSection
+            onboardingSection
+            debridSection
             playbackSection
             installSection
             if !store.addons.isEmpty {
                 installedSection
                 healthSection
+                toolsSection
             }
             seedSection
             popularSection
+            mirrorSection
+            storeSection
         }
         .scrollContentBackground(.hidden)
         .background { AppScreenBackground() }
@@ -30,6 +40,10 @@ struct StremioAddonsSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await store.probePopularPresets()
+            if let pending = StremioInstallDeepLink.consumePending() {
+                installDraft = pending
+                banner = "Ready to install from link"
+            }
         }
         .confirmationDialog(
             "Remove addon?",
@@ -47,6 +61,15 @@ struct StremioAddonsSettingsView: View {
             }
             Button("Cancel", role: .cancel) { confirmRemove = nil }
         }
+        .fileExporter(
+            isPresented: $showExporter,
+            document: exportDocument,
+            contentType: .json,
+            defaultFilename: "betterstreamflix-stremio-addons.json"
+        ) { _ in }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+            Task { await importList(result) }
+        }
     }
 
     private var heroSection: some View {
@@ -55,13 +78,18 @@ struct StremioAddonsSettingsView: View {
                 Text("Community addons")
                     .font(DesignTokens.Typography.shelfTitle)
                     .foregroundStyle(AppTheme.primaryText)
-                Text("Install real remote Stremio manifests — catalogs, streams, and subtitles — the same protocol Stremio uses. App-bundled scrapers stay out of this list.")
+                Text("Install real remote Stremio manifests — catalogs, streams, and subtitles. App-bundled HTTP stays under Core, never in this list.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 10) {
                     metricChip(title: "Installed", value: "\(store.addons.count)")
                     metricChip(title: "Streams", value: "\(store.streamAddons.count)")
                     metricChip(title: "Catalogs", value: "\(store.catalogAddons.count)")
+                }
+                if debrid.hasAnyToken {
+                    Text("Debrid ready · \(debrid.preferredProfile?.service.shortTitle ?? "")")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(environment.theme.accentBright)
                 }
             }
             .padding(.vertical, 6)
@@ -72,12 +100,57 @@ struct StremioAddonsSettingsView: View {
         }
     }
 
+    private var onboardingSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                labeledHint(
+                    title: "Stremio plugins",
+                    text: "Remote manifests you install here (Cinemeta, Torrentio+Debrid, OpenSubtitles v3…)."
+                )
+                labeledHint(
+                    title: "Language scrapers",
+                    text: "German / English / … sites gated by the playback language picker."
+                )
+                labeledHint(
+                    title: "Built-in HTTP",
+                    text: "App-bundled Core source — not a Stremio plugin."
+                )
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("How sources differ")
+        }
+        .listRowBackground(AppTheme.surface)
+    }
+
+    private var debridSection: some View {
+        Section {
+            NavigationLink {
+                StremioDebridSettingsView()
+            } label: {
+                HStack {
+                    Label("Debrid & performance", systemImage: "key.horizontal.fill")
+                    Spacer()
+                    Text(debrid.hasAnyToken ? "Configured" : "Add token")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text("Torrentio, Comet, and MediaFusion need a debrid token for in-app playback. Torrents alone never play on iOS.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text("Debrid")
+        }
+        .listRowBackground(AppTheme.surface)
+    }
+
     private var playbackSection: some View {
         Section {
             Toggle(isOn: playbackBinding) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Use addons for playback")
-                    Text("Query enabled stream addons and feed HTTP results into the native player alongside your language providers.")
+                    Text("Query enabled Stremio stream addons and feed HTTP results into NativePlayer alongside language providers.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -127,7 +200,7 @@ struct StremioAddonsSettingsView: View {
         } header: {
             Text("Install")
         } footer: {
-            Text("Paste a manifest URL, stremio:// link, or a shared installer string. Only remote community addons appear here.")
+            Text("Paste a manifest URL, stremio:// link, betterstreamflix://install?url=…, or a shared installer string. Configurable addons: open Configure, finish setup in Safari, then paste the resulting manifest URL.")
         }
         .listRowBackground(AppTheme.surface)
     }
@@ -171,6 +244,29 @@ struct StremioAddonsSettingsView: View {
         .listRowBackground(AppTheme.surface)
     }
 
+    private var toolsSection: some View {
+        Section {
+            Button {
+                if let data = try? store.exportAddonListJSON() {
+                    exportDocument = StremioAddonListDocument(data: data)
+                    showExporter = true
+                }
+            } label: {
+                Label("Export addon list", systemImage: "square.and.arrow.up")
+            }
+            Button {
+                showImporter = true
+            } label: {
+                Label("Import addon list", systemImage: "square.and.arrow.down")
+            }
+        } header: {
+            Text("Backup")
+        } footer: {
+            Text("Exports only Stremio plugin URLs (not Debrid tokens). Full app backup still includes preferences.")
+        }
+        .listRowBackground(AppTheme.surface)
+    }
+
     private var seedSection: some View {
         Section {
             ForEach(StremioCuratedCatalog.seedDefaults) { curated in
@@ -203,7 +299,37 @@ struct StremioAddonsSettingsView: View {
         } header: {
             Text("Popular presets")
         } footer: {
-            Text("Torrentio and mirrors can be blocked on some networks — install still works when the host is reachable, otherwise paste a working URL.")
+            Text("Stream presets that index torrents need Debrid for playback. WatchHub opens external store links. Mirror paste works when Cloudflare blocks the primary host.")
+        }
+        .listRowBackground(AppTheme.surface)
+    }
+
+    private var mirrorSection: some View {
+        Section {
+            ForEach(StremioCuratedCatalog.torrentioMirrorHosts, id: \.self) { host in
+                Button {
+                    installDraft = "https://\(host)/manifest.json"
+                    banner = "Mirror pasted — tap Install (or Install with Debrid after saving a token)"
+                } label: {
+                    Label(host, systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline)
+                }
+            }
+        } header: {
+            Text("Torrentio mirrors")
+        } footer: {
+            Text("Documented fallback hosts when torrentio.strem.fun is unreachable.")
+        }
+        .listRowBackground(AppTheme.surface)
+    }
+
+    private var storeSection: some View {
+        Section {
+            NavigationLink {
+                StremioAddonStoreBrowserView()
+            } label: {
+                Label("Browse addon store", systemImage: "storefront")
+            }
         }
         .listRowBackground(AppTheme.surface)
     }
@@ -229,18 +355,26 @@ struct StremioAddonsSettingsView: View {
         return lower.contains("couldn’t") || lower.contains("couldn't")
             || lower.contains("invalid") || lower.contains("failed")
             || lower.contains("blocked") || lower.contains("unreachable")
-            || lower.contains("not a stremio")
+            || lower.contains("not a stremio") || lower.contains("add a debrid")
     }
 
     @ViewBuilder
     private func addonRow(_ addon: InstalledStremioAddon) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
-                addonGlyph(addon.name, kind: addon.kind)
+                addonArtwork(url: addon.logoURL, name: addon.name, kind: addon.kind)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(addon.name)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(AppTheme.primaryText)
+                    HStack(spacing: 6) {
+                        Text(addon.name)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(AppTheme.primaryText)
+                        if addon.isAdult {
+                            badge("18+", color: Color(hex: 0xFF6B6B))
+                        }
+                        if addon.isP2P {
+                            badge("P2P", color: Color(hex: 0xF0C24B))
+                        }
+                    }
                     Text(addon.capabilitySummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -256,6 +390,16 @@ struct StremioAddonsSettingsView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
+                        if let smoke = addon.streamSmokeOK {
+                            Text(smoke ? "Stream OK" : "Stream fail")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(smoke ? Color(hex: 0x3DDC97) : Color(hex: 0xFF6B6B))
+                        }
+                    }
+                    if addon.needsConfigurationWarning {
+                        Text("Configuration required — open Configure, then reinstall the finished URL.")
+                            .font(.caption2)
+                            .foregroundStyle(Color(hex: 0xF0C24B))
                     }
                 }
                 Spacer(minLength: 0)
@@ -277,6 +421,16 @@ struct StremioAddonsSettingsView: View {
                     Task { await store.refreshHealth(for: addon) }
                 }
                 .font(.caption.weight(.semibold))
+                if addon.supportsStream {
+                    Button("Smoke") {
+                        Task { await store.smokeTestStream(for: addon) }
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+                if let configure = addon.configurePageURL {
+                    Link("Configure", destination: configure)
+                        .font(.caption.weight(.semibold))
+                }
                 Spacer()
                 Button("Remove", role: .destructive) {
                     confirmRemove = addon
@@ -290,8 +444,9 @@ struct StremioAddonsSettingsView: View {
     private func curatedRow(_ curated: StremioCuratedAddon, emphasize: Bool) -> some View {
         let installed = store.isInstalled(curated: curated)
         let reachability = store.presetReachability[curated.id]
+        let needsDebrid = StremioCuratedCatalog.isDebridStreamPreset(curated)
         return HStack(alignment: .top, spacing: 12) {
-            addonGlyph(curated.name, kind: curated.kind)
+            addonArtwork(url: nil, name: curated.name, kind: curated.kind)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(curated.name)
@@ -313,22 +468,44 @@ struct StremioAddonsSettingsView: View {
                 }
             }
             Spacer(minLength: 0)
-            if installed {
+                            if installed {
                 Text("Installed")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             } else {
-                Button(emphasize ? "Install" : "Add") {
-                    Task { await installCurated(curated) }
+                VStack(spacing: 6) {
+                    if needsDebrid {
+                        Button("With Debrid") {
+                            Task { await installCuratedWithDebrid(curated) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(environment.theme.accent)
+                        .font(.caption.weight(.semibold))
+                        .disabled(!debrid.hasAnyToken || (reachability == .unreachable && curated.isPopularOptional))
+                    }
+                    Button(emphasize ? "Install" : (needsDebrid ? "Bare" : "Add")) {
+                        Task { await installCurated(curated) }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(environment.theme.accent)
+                    .font(.caption.weight(.semibold))
+                    .disabled(reachability == .unreachable && curated.isPopularOptional)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(environment.theme.accent)
-                .font(.caption.weight(.semibold))
-                .disabled(reachability == .unreachable && curated.isPopularOptional)
             }
         }
         .padding(.vertical, 2)
         .opacity(reachability == .unreachable && !installed && curated.isPopularOptional ? 0.72 : 1)
+    }
+
+    private func labeledHint(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.primaryText)
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func filterChip(_ kind: StremioAddonKind?, title: String) -> some View {
@@ -370,7 +547,7 @@ struct StremioAddonsSettingsView: View {
         )
     }
 
-    private func addonGlyph(_ name: String, kind: StremioAddonKind) -> some View {
+    private func addonArtwork(url: URL?, name: String, kind: StremioAddonKind) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(
@@ -380,9 +557,23 @@ struct StremioAddonsSettingsView: View {
                         endPoint: .bottomTrailing
                     )
                 )
-            Text(String(name.prefix(1)).uppercased())
-                .font(.headline.weight(.bold))
-                .foregroundStyle(Color(hex: 0x11141C))
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Text(String(name.prefix(1)).uppercased())
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(Color(hex: 0x11141C))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                Text(String(name.prefix(1)).uppercased())
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color(hex: 0x11141C))
+            }
         }
         .frame(width: 40, height: 40)
         .overlay(alignment: .bottomTrailing) {
@@ -393,6 +584,15 @@ struct StremioAddonsSettingsView: View {
                 .background(AppTheme.surface, in: Circle())
                 .offset(x: 4, y: 4)
         }
+    }
+
+    private func badge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.2), in: Capsule())
+            .foregroundStyle(color)
     }
 
     private func kindIcon(_ kind: StremioAddonKind) -> String {
@@ -453,6 +653,17 @@ struct StremioAddonsSettingsView: View {
         }
     }
 
+    private func installCuratedWithDebrid(_ curated: StremioCuratedAddon) async {
+        do {
+            try await store.installCuratedWithDebrid(curated, debrid: debrid)
+            banner = "Installed \(curated.name) with \(debrid.preferredProfile?.service.shortTitle ?? "Debrid")"
+            DesignTokens.Haptics.primaryAction()
+        } catch {
+            banner = error.localizedDescription.nilIfEmpty
+                ?? "Couldn’t install \(curated.name) with Debrid"
+        }
+    }
+
     private func refreshHealth() async {
         isRefreshingHealth = true
         defer { isRefreshingHealth = false }
@@ -460,6 +671,35 @@ struct StremioAddonsSettingsView: View {
         await store.probePopularPresets()
         banner = "Health check finished"
         DesignTokens.Haptics.selection()
+    }
+
+    private func importList(_ result: Result<URL, Error>) async {
+        do {
+            let url = try result.get()
+            guard url.startAccessingSecurityScopedResource() else {
+                banner = "Couldn’t access import file"
+                return
+            }
+            defer { url.stopAccessingSecurityScopedResource() }
+            let data = try Data(contentsOf: url)
+            let count = try await store.importAddonListJSON(data)
+            banner = "Imported \(count) addon\(count == 1 ? "" : "s")"
+        } catch {
+            banner = "Import failed"
+        }
+    }
+}
+
+struct StremioAddonListDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 
@@ -485,5 +725,50 @@ struct StremioAddonsSettingsLink: View {
         if count == 0 { return "Install plugins" }
         let active = store.enabledAddons.count
         return "\(active)/\(count) plugins"
+    }
+}
+
+/// Holds a pending install URL from `betterstreamflix://` / `stremio://` deep links.
+enum StremioInstallDeepLink {
+    private static let key = "stremio.install.pendingURL"
+    static let didReceiveNotification = Notification.Name("stremio.install.didReceive")
+
+    static func queue(_ raw: String) {
+        UserDefaults.standard.set(raw, forKey: key)
+        NotificationCenter.default.post(name: didReceiveNotification, object: raw)
+    }
+
+    static func consumePending() -> String? {
+        let value = UserDefaults.standard.string(forKey: key)
+        UserDefaults.standard.removeObject(forKey: key)
+        return value
+    }
+
+    static func handle(url: URL) -> Bool {
+        let scheme = url.scheme?.lowercased() ?? ""
+        if scheme == "stremio" {
+            if let parsed = StremioManifestURL.parse(url.absoluteString) {
+                queue(parsed.absoluteString)
+                return true
+            }
+        }
+        if scheme == "betterstreamflix" {
+            if url.host?.lowercased() == "install" {
+                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                if let raw = components?.queryItems?.first(where: { $0.name == "url" })?.value,
+                   let parsed = StremioManifestURL.parse(raw) {
+                    queue(parsed.absoluteString)
+                    return true
+                }
+            }
+            if url.path.contains("install"),
+               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let raw = components.queryItems?.first(where: { $0.name == "url" })?.value,
+               let parsed = StremioManifestURL.parse(raw) {
+                queue(parsed.absoluteString)
+                return true
+            }
+        }
+        return false
     }
 }

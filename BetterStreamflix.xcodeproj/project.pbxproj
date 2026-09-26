@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		342996B210DE470F9AC19EDF /* StremioAddonStoreBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5631070F179E4CAE86A34B3F /* StremioAddonStoreBrowserView.swift */; };
+		457D048C5B82483D9B9DB245 /* StremioDebridSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBFF87C1EBC64E258E01BA10 /* StremioDebridSettingsView.swift */; };
+		9611AC8F0A8E499283A47A97 /* StremioMetaEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7ABED2B456C4F8AB150D5FB /* StremioMetaEnricher.swift */; };
+		0702DEB1540E404F8F4B443B /* StremioAddonCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B0CC70E42D467897CB7A33 /* StremioAddonCache.swift */; };
+		14A0CEF8D152429CA755BEF5 /* StremioDebridStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19BF8DEB4EB54E1185550BE7 /* StremioDebridStore.swift */; };
 		DADB97AC880BDA6EC842727E /* EnglishPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */; };
 		7C2EDBE0EB326AE07E8CDC83 /* FrenchPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */; };
 		F4351AA8A81AEAF523003237 /* GermanPlaybackProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */; };
@@ -92,6 +97,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		5631070F179E4CAE86A34B3F /* StremioAddonStoreBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonStoreBrowserView.swift; sourceTree = "<group>"; };
+		BBFF87C1EBC64E258E01BA10 /* StremioDebridSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioDebridSettingsView.swift; sourceTree = "<group>"; };
+		F7ABED2B456C4F8AB150D5FB /* StremioMetaEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioMetaEnricher.swift; sourceTree = "<group>"; };
+		28B0CC70E42D467897CB7A33 /* StremioAddonCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonCache.swift; sourceTree = "<group>"; };
+		19BF8DEB4EB54E1185550BE7 /* StremioDebridStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioDebridStore.swift; sourceTree = "<group>"; };
 		BCB7C1588185EB6944EE2FB8 /* EnglishPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishPlaybackProviders.swift; sourceTree = "<group>"; };
 		6E06C6AEF80D82D221AC161B /* FrenchPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrenchPlaybackProviders.swift; sourceTree = "<group>"; };
 		C8714DD48749B506F2AA77B5 /* GermanPlaybackProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GermanPlaybackProviders.swift; sourceTree = "<group>"; };
@@ -230,6 +240,9 @@
 				8B52A968E034D072D964F5A6 /* StreamingCommunityProvider.swift */,
 				7376D52AEC6961ADAD1B97DA /* StremioAddonProvider.swift */,
 				A0B6891778014489A6D9F8EC /* StremioAddonStore.swift */,
+				F7ABED2B456C4F8AB150D5FB /* StremioMetaEnricher.swift */,
+				28B0CC70E42D467897CB7A33 /* StremioAddonCache.swift */,
+				19BF8DEB4EB54E1185550BE7 /* StremioDebridStore.swift */,
 				9E0935EB00024C51ABBAC202 /* StremioProtocol.swift */,
 				A77A50CD75D840C27F9848DD /* SubtitleProviders.swift */,
 				D41A5B7B30630001007A449E /* SubtitleCache.swift */,
@@ -296,6 +309,8 @@
 				A87CC1EB32FE5D93C2B8AB10 /* FirstLaunchSetupView.swift */,
 				4C46BB2CD9EC4F6484E7E1A2 /* StremioCatalogViews.swift */,
 				CA77C1CFDBA74EB197350E60 /* StremioAddonsSettingsView.swift */,
+				5631070F179E4CAE86A34B3F /* StremioAddonStoreBrowserView.swift */,
+				BBFF87C1EBC64E258E01BA10 /* StremioDebridSettingsView.swift */,
 				CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */,
 			);
 			path = Features;
@@ -441,7 +456,12 @@
 				37850C3BF6EB0809B715691D /* StremioAddonProvider.swift in Sources */,
 				7ADDA98E11AF42EEB0FAF2A5 /* StremioCatalogViews.swift in Sources */,
 				20F27DA1DFBA474BB73159C3 /* StremioAddonsSettingsView.swift in Sources */,
+				342996B210DE470F9AC19EDF /* StremioAddonStoreBrowserView.swift in Sources */,
+				457D048C5B82483D9B9DB245 /* StremioDebridSettingsView.swift in Sources */,
 				28127D9AD9574E78931EACEB /* StremioAddonStore.swift in Sources */,
+				9611AC8F0A8E499283A47A97 /* StremioMetaEnricher.swift in Sources */,
+				0702DEB1540E404F8F4B443B /* StremioAddonCache.swift in Sources */,
+				14A0CEF8D152429CA755BEF5 /* StremioDebridStore.swift in Sources */,
 				50AF31E5D50D4A0B9A80088D /* StremioProtocol.swift in Sources */,
 				C319696D4F332DC5805B629A /* SubtitleProviders.swift in Sources */,
 				D41A5B7C30630001007A449E /* SubtitleCache.swift in Sources */,
@@ -489,7 +509,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = BetterStreamflix/Resources/BetterStreamflix.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = A97K2SS8D9;
 				INFOPLIST_FILE = BetterStreamflix/Resources/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
@@ -497,7 +517,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -682,7 +702,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = BetterStreamflix/Resources/BetterStreamflix.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = A97K2SS8D9;
 				INFOPLIST_FILE = BetterStreamflix/Resources/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
@@ -690,7 +710,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = com.betterstreamflix.ios;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

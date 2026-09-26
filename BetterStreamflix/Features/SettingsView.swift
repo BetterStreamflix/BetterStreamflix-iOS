@@ -186,7 +186,12 @@ struct SettingsView: View {
 
                 Section {
                     StremioAddonsSettingsLink()
-                    Text("Install remote Stremio community plugins (catalog / stream / subtitles). App-bundled HTTP is separate under Core — never listed as a Stremio plugin.")
+                    NavigationLink {
+                        StremioDebridSettingsView()
+                    } label: {
+                        Label("Debrid", systemImage: "key.horizontal.fill")
+                    }
+                    Text("Install remote Stremio community plugins (catalog / stream / subtitles). Debrid tokens unlock Torrentio/Comet/MediaFusion HTTP playback. App-bundled HTTP is separate under Core — never listed as a Stremio plugin.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } header: {
@@ -293,7 +298,7 @@ struct SettingsView: View {
                     Toggle("OpenSubtitles", isOn: $openSubtitlesEnabled)
                     Toggle("Wizdom", isOn: $wizdomSubtitlesEnabled)
                     Toggle("Ktuvit", isOn: $ktuvitSubtitlesEnabled)
-                    Toggle("Stremio / External Streams", isOn: $externalStreamSubtitlesEnabled)
+                    Toggle("Stremio", isOn: $externalStreamSubtitlesEnabled)
 
                     Toggle(
                         "Use latest saved sync automatically",
@@ -307,6 +312,11 @@ struct SettingsView: View {
 
                     Text(
                         "Choose which catalogs BetterStreamflix searches while a title plays. Fewer sources can speed up startup."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    Text(
+                        "Stremio here means installed subtitle addons (for example OpenSubtitles v3 via the Stremio protocol) — not the same as the OpenSubtitles REST toggle above."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)

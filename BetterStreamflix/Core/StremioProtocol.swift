@@ -50,8 +50,34 @@ struct StremioManifest: Codable, Hashable, Sendable {
     var supportsStream: Bool { resources.contains { $0.name == "stream" } }
     var supportsSubtitles: Bool { resources.contains { $0.name == "subtitles" } }
 
+    var isAdult: Bool { behaviorHints?.adult == true }
+    var isP2P: Bool { behaviorHints?.p2p == true }
+    var isConfigurable: Bool { behaviorHints?.configurable == true }
+    var requiresConfiguration: Bool { behaviorHints?.configurationRequired == true }
+
     func resource(_ name: String) -> StremioManifestResource? {
         resources.first { $0.name == name }
+    }
+
+    /// Whether this addon can answer `resource` for the given media type + id.
+    func accepts(resource name: String, type: String, id: String) -> Bool {
+        guard let resource = resource(name) else {
+            // String-only resource lists have no type/idPrefixes — allow.
+            return resources.contains { $0.name == name }
+        }
+        if let types = resource.types, !types.isEmpty, !types.contains(type) {
+            return false
+        }
+        if let prefixes = resource.idPrefixes ?? idPrefixes, !prefixes.isEmpty {
+            return prefixes.contains { id.hasPrefix($0) || id == $0.trimmingCharacters(in: CharacterSet(charactersIn: ":")) }
+        }
+        return true
+    }
+
+    var configurationURL: URL? {
+        // Stremio convention: many configurable addons expose config at /configure
+        // Callers typically open the origin + "/configure".
+        nil
     }
 }
 
@@ -81,6 +107,20 @@ struct StremioManifestCatalog: Codable, Hashable, Sendable, Identifiable {
     var supportsSearch: Bool {
         (extra ?? []).contains { $0.name == "search" }
             || (extraSupported ?? []).contains("search")
+    }
+
+    var supportsSkip: Bool {
+        (extra ?? []).contains { $0.name == "skip" }
+            || (extraSupported ?? []).contains("skip")
+    }
+
+    var supportsGenre: Bool {
+        (extra ?? []).contains { $0.name == "genre" }
+            || (extraSupported ?? []).contains("genre")
+    }
+
+    var genreOptions: [String] {
+        (extra ?? []).first(where: { $0.name == "genre" })?.options ?? []
     }
 
     var requiresExtras: Bool {
@@ -319,6 +359,29 @@ struct StremioStream: Decodable, Sendable {
         let parts = [description, title, name].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.first ?? ""
     }
+
+    var isTorrentOnly: Bool { infoHash != nil && url == nil }
+    var isYouTube: Bool { ytId != nil && url == nil }
+    var isExternalOnly: Bool { externalUrl != nil && url == nil }
+    var notWebReady: Bool { behaviorHints?.notWebReady == true }
+
+    enum PlaybackKind: String, Sendable {
+        case http
+        case torrent
+        case youtube
+        case external
+        case unsupported
+    }
+
+    var playbackKind: PlaybackKind {
+        if let url, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            return .http
+        }
+        if infoHash != nil { return .torrent }
+        if ytId != nil { return .youtube }
+        if externalUrl != nil { return .external }
+        return .unsupported
+    }
 }
 
 struct StremioSubtitle: Decodable, Sendable {
@@ -343,12 +406,22 @@ struct StremioAddonClient: Sendable {
         client: any HTTPClientProtocol = HTTPClient()
     ) async throws -> (manifest: StremioManifest, baseURL: URL) {
         let url = manifestURL.stremioEnsuredManifestURL
-        let manifest: StremioManifest = try await fetch(StremioManifest.self, from: url, client: client)
+        let manifest: StremioManifest = try await fetch(
+            StremioManifest.self,
+            from: url,
+            client: client,
+            cacheKey: "manifest:\(url.absoluteString)",
+            cacheTTL: manifestCacheTTL
+        )
         return (manifest, url.deletingLastPathComponent().stremioNormalizedBase)
     }
 
     func manifest() async throws -> StremioManifest {
-        try await load(StremioManifest.self, pathComponents: ["manifest.json"])
+        try await load(
+            StremioManifest.self,
+            pathComponents: ["manifest.json"],
+            cacheTTL: Self.manifestCacheTTL
+        )
     }
 
     func catalog(
@@ -357,13 +430,18 @@ struct StremioAddonClient: Sendable {
         extras: [String: String] = [:]
     ) async throws -> [StremioMetaPreview] {
         let path = resourcePath(resource: "catalog", type: type, id: id, extras: extras)
-        return try await load(StremioCatalogPayload.self, pathComponents: path).metas
+        return try await load(
+            StremioCatalogPayload.self,
+            pathComponents: path,
+            cacheTTL: Self.catalogCacheTTL
+        ).metas
     }
 
     func meta(type: String, id: String) async throws -> StremioMetaDetail {
         try await load(
             StremioMetaPayload.self,
-            pathComponents: ["meta", type, id + ".json"]
+            pathComponents: ["meta", type, id + ".json"],
+            cacheTTL: Self.catalogCacheTTL
         ).meta
     }
 
@@ -376,6 +454,18 @@ struct StremioAddonClient: Sendable {
 
     func streams(for context: PlaybackLookupContext) async throws -> [StremioStream] {
         guard let identifier = Self.streamIdentifier(for: context) else { return [] }
+        let type = context.request.media.kind == .movie ? "movie" : "series"
+        return try await streams(type: type, id: identifier)
+    }
+
+    /// Prefer IMDb; fall back to `tmdb:` / `kitsu:` when the caller supplies prefixes.
+    func streams(
+        for context: PlaybackLookupContext,
+        idPrefixes: [String]?
+    ) async throws -> [StremioStream] {
+        guard let identifier = Self.streamIdentifier(for: context, idPrefixes: idPrefixes) else {
+            return []
+        }
         let type = context.request.media.kind == .movie ? "movie" : "series"
         return try await streams(type: type, id: identifier)
     }
@@ -393,29 +483,122 @@ struct StremioAddonClient: Sendable {
         return try await subtitles(type: type, id: identifier)
     }
 
+    func subtitles(
+        for request: SubtitleLookupRequest,
+        idPrefixes: [String]?,
+        tmdbID: Int?
+    ) async throws -> [StremioSubtitle] {
+        guard let identifier = Self.subtitleIdentifier(
+            for: request,
+            idPrefixes: idPrefixes,
+            tmdbID: tmdbID
+        ) else { return [] }
+        let type = request.kind == .movie ? "movie" : "series"
+        return try await subtitles(type: type, id: identifier)
+    }
+
     static func streamIdentifier(for context: PlaybackLookupContext) -> String? {
-        guard let imdbID = context.request.media.imdbID,
-              imdbID.range(of: #"^tt\d{7,9}$"#, options: .regularExpression) != nil else {
-            return nil
+        streamIdentifier(for: context, idPrefixes: nil)
+    }
+
+    static func streamIdentifier(
+        for context: PlaybackLookupContext,
+        idPrefixes: [String]?
+    ) -> String? {
+        let media = context.request.media
+        let prefixes = idPrefixes ?? ["tt", "tmdb:", "kitsu:"]
+        let allowsIMDb = prefixes.contains { $0 == "tt" || $0.hasPrefix("tt") }
+        let allowsTMDb = prefixes.contains { $0.hasPrefix("tmdb") }
+        let allowsKitsu = prefixes.contains { $0.hasPrefix("kitsu") }
+
+        if allowsIMDb,
+           let imdbID = media.imdbID,
+           imdbID.range(of: #"^tt\d{7,9}$"#, options: .regularExpression) != nil {
+            if media.kind == .series {
+                guard let episode = context.request.episode else { return nil }
+                return "\(imdbID):\(episode.seasonNumber):\(episode.number)"
+            }
+            return imdbID
         }
-        if context.request.media.kind == .series {
-            guard let episode = context.request.episode else { return nil }
-            return "\(imdbID):\(episode.seasonNumber):\(episode.number)"
+
+        if allowsTMDb, let tmdb = media.tmdbID {
+            let base = "tmdb:\(tmdb)"
+            if media.kind == .series {
+                guard let episode = context.request.episode else { return nil }
+                return "\(base):\(episode.seasonNumber):\(episode.number)"
+            }
+            return base
         }
-        return imdbID
+
+        if allowsKitsu,
+           let raw = media.id.split(separator: ":").last,
+           media.id.lowercased().contains("kitsu"),
+           !raw.isEmpty {
+            let base = "kitsu:\(raw)"
+            if media.kind == .series {
+                guard let episode = context.request.episode else { return nil }
+                return "\(base):\(episode.seasonNumber):\(episode.number)"
+            }
+            return base
+        }
+
+        // When prefixes unknown, still try IMDb then TMDB.
+        if idPrefixes == nil {
+            if let imdbID = media.imdbID,
+               imdbID.range(of: #"^tt\d{7,9}$"#, options: .regularExpression) != nil {
+                if media.kind == .series {
+                    guard let episode = context.request.episode else { return nil }
+                    return "\(imdbID):\(episode.seasonNumber):\(episode.number)"
+                }
+                return imdbID
+            }
+            if let tmdb = media.tmdbID {
+                let base = "tmdb:\(tmdb)"
+                if media.kind == .series {
+                    guard let episode = context.request.episode else { return nil }
+                    return "\(base):\(episode.seasonNumber):\(episode.number)"
+                }
+                return base
+            }
+        }
+        return nil
     }
 
     static func subtitleIdentifier(for request: SubtitleLookupRequest) -> String? {
-        guard request.imdbID.range(of: #"^tt\d{7,9}$"#, options: .regularExpression) != nil else {
-            return nil
-        }
-        if request.kind == .series {
-            guard let season = request.seasonNumber, let episode = request.episodeNumber else {
-                return nil
+        subtitleIdentifier(for: request, idPrefixes: nil, tmdbID: nil)
+    }
+
+    static func subtitleIdentifier(
+        for request: SubtitleLookupRequest,
+        idPrefixes: [String]?,
+        tmdbID: Int?
+    ) -> String? {
+        let prefixes = idPrefixes ?? ["tt", "tmdb:"]
+        let allowsIMDb = prefixes.contains { $0 == "tt" || $0.hasPrefix("tt") }
+        let allowsTMDb = prefixes.contains { $0.hasPrefix("tmdb") }
+
+        if allowsIMDb,
+           request.imdbID.range(of: #"^tt\d{7,9}$"#, options: .regularExpression) != nil {
+            if request.kind == .series {
+                guard let season = request.seasonNumber, let episode = request.episodeNumber else {
+                    return nil
+                }
+                return "\(request.imdbID):\(season):\(episode)"
             }
-            return "\(request.imdbID):\(season):\(episode)"
+            return request.imdbID
         }
-        return request.imdbID
+
+        if allowsTMDb, let tmdbID {
+            let base = "tmdb:\(tmdbID)"
+            if request.kind == .series {
+                guard let season = request.seasonNumber, let episode = request.episodeNumber else {
+                    return nil
+                }
+                return "\(base):\(season):\(episode)"
+            }
+            return base
+        }
+        return nil
     }
 
     private func resourcePath(
@@ -438,7 +621,11 @@ struct StremioAddonClient: Sendable {
         return [resource, type, id, encoded + ".json"]
     }
 
-    private func load<T: Decodable>(_ type: T.Type, pathComponents: [String]) async throws -> T {
+    private func load<T: Decodable>(
+        _ type: T.Type,
+        pathComponents: [String],
+        cacheTTL: TimeInterval? = nil
+    ) async throws -> T {
         var url = baseURL
         for (index, component) in pathComponents.enumerated() {
             let isLast = index == pathComponents.count - 1
@@ -448,24 +635,59 @@ struct StremioAddonClient: Sendable {
                 url = url.appendingPathComponent(component, isDirectory: true)
             }
         }
-        return try await Self.fetch(type, from: url, client: client)
+        return try await Self.fetch(
+            type,
+            from: url,
+            client: client,
+            cacheKey: url.absoluteString,
+            cacheTTL: cacheTTL
+        )
     }
 
     private static func fetch<T: Decodable>(
         _ type: T.Type,
         from url: URL,
-        client: any HTTPClientProtocol
+        client: any HTTPClientProtocol,
+        cacheKey: String? = nil,
+        cacheTTL: TimeInterval? = nil
     ) async throws -> T {
         try Task.checkCancellation()
+        let key = cacheKey ?? url.absoluteString
+        if let ttl = cacheTTL,
+           let cached = await StremioAddonCache.shared.cachedData(for: key) {
+            if let decoded = try? JSONDecoder().decode(type, from: cached.data) {
+                return decoded
+            }
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = 25
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("BetterStreamflix-iOS", forHTTPHeaderField: "User-Agent")
+        if let cached = await StremioAddonCache.shared.cachedData(for: key),
+           let etag = cached.etag {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
         let response = try await client.data(for: request)
         try Task.checkCancellation()
+        let status = response.response.statusCode
+        if status == 304,
+           let cached = await StremioAddonCache.shared.cachedData(for: key),
+           let decoded = try? JSONDecoder().decode(type, from: cached.data) {
+            return decoded
+        }
         do {
-            return try JSONDecoder().decode(type, from: response.data)
+            let decoded = try JSONDecoder().decode(type, from: response.data)
+            if let ttl = cacheTTL {
+                let etag = response.response.value(forHTTPHeaderField: "ETag")
+                await StremioAddonCache.shared.store(
+                    response.data,
+                    etag: etag,
+                    for: key,
+                    ttl: ttl
+                )
+            }
+            return decoded
         } catch {
             throw AppError.decoding("Stremio addon response")
         }

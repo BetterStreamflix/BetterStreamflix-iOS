@@ -52,6 +52,13 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
     var lastError: String?
     var isCurated: Bool
     var latencyMS: Int?
+    var idPrefixes: [String]?
+    var resourceTypes: [String]?
+    var isAdult: Bool
+    var isP2P: Bool
+    var isConfigurable: Bool
+    var requiresConfiguration: Bool
+    var streamSmokeOK: Bool?
 
     var transportID: String { id }
 
@@ -73,6 +80,101 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
         return parts.isEmpty ? "No resources" : parts.joined(separator: " · ")
     }
 
+    var needsConfigurationWarning: Bool {
+        requiresConfiguration && !StremioDebridURLBuilder.looksConfigured(manifestURL)
+    }
+
+    var configurePageURL: URL? {
+        guard isConfigurable || requiresConfiguration else { return nil }
+        return baseURL.appendingPathComponent("configure")
+    }
+
+    init(
+        id: String,
+        manifestURL: URL,
+        baseURL: URL,
+        name: String,
+        version: String? = nil,
+        detail: String? = nil,
+        logoURL: URL? = nil,
+        isEnabled: Bool,
+        sortOrder: Int,
+        supportsCatalog: Bool,
+        supportsMeta: Bool,
+        supportsStream: Bool,
+        supportsSubtitles: Bool,
+        catalogs: [StremioManifestCatalog],
+        health: StremioAddonHealth,
+        lastCheckedAt: Date? = nil,
+        lastError: String? = nil,
+        isCurated: Bool,
+        latencyMS: Int? = nil,
+        idPrefixes: [String]? = nil,
+        resourceTypes: [String]? = nil,
+        isAdult: Bool = false,
+        isP2P: Bool = false,
+        isConfigurable: Bool = false,
+        requiresConfiguration: Bool = false,
+        streamSmokeOK: Bool? = nil
+    ) {
+        self.id = id
+        self.manifestURL = manifestURL
+        self.baseURL = baseURL
+        self.name = name
+        self.version = version
+        self.detail = detail
+        self.logoURL = logoURL
+        self.isEnabled = isEnabled
+        self.sortOrder = sortOrder
+        self.supportsCatalog = supportsCatalog
+        self.supportsMeta = supportsMeta
+        self.supportsStream = supportsStream
+        self.supportsSubtitles = supportsSubtitles
+        self.catalogs = catalogs
+        self.health = health
+        self.lastCheckedAt = lastCheckedAt
+        self.lastError = lastError
+        self.isCurated = isCurated
+        self.latencyMS = latencyMS
+        self.idPrefixes = idPrefixes
+        self.resourceTypes = resourceTypes
+        self.isAdult = isAdult
+        self.isP2P = isP2P
+        self.isConfigurable = isConfigurable
+        self.requiresConfiguration = requiresConfiguration
+        self.streamSmokeOK = streamSmokeOK
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        manifestURL = try container.decode(URL.self, forKey: .manifestURL)
+        baseURL = try container.decode(URL.self, forKey: .baseURL)
+        name = try container.decode(String.self, forKey: .name)
+        version = try container.decodeIfPresent(String.self, forKey: .version)
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        logoURL = try container.decodeIfPresent(URL.self, forKey: .logoURL)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        supportsCatalog = try container.decodeIfPresent(Bool.self, forKey: .supportsCatalog) ?? false
+        supportsMeta = try container.decodeIfPresent(Bool.self, forKey: .supportsMeta) ?? false
+        supportsStream = try container.decodeIfPresent(Bool.self, forKey: .supportsStream) ?? false
+        supportsSubtitles = try container.decodeIfPresent(Bool.self, forKey: .supportsSubtitles) ?? false
+        catalogs = try container.decodeIfPresent([StremioManifestCatalog].self, forKey: .catalogs) ?? []
+        health = try container.decodeIfPresent(StremioAddonHealth.self, forKey: .health) ?? .unknown
+        lastCheckedAt = try container.decodeIfPresent(Date.self, forKey: .lastCheckedAt)
+        lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
+        isCurated = try container.decodeIfPresent(Bool.self, forKey: .isCurated) ?? false
+        latencyMS = try container.decodeIfPresent(Int.self, forKey: .latencyMS)
+        idPrefixes = try container.decodeIfPresent([String].self, forKey: .idPrefixes)
+        resourceTypes = try container.decodeIfPresent([String].self, forKey: .resourceTypes)
+        isAdult = try container.decodeIfPresent(Bool.self, forKey: .isAdult) ?? false
+        isP2P = try container.decodeIfPresent(Bool.self, forKey: .isP2P) ?? false
+        isConfigurable = try container.decodeIfPresent(Bool.self, forKey: .isConfigurable) ?? false
+        requiresConfiguration = try container.decodeIfPresent(Bool.self, forKey: .requiresConfiguration) ?? false
+        streamSmokeOK = try container.decodeIfPresent(Bool.self, forKey: .streamSmokeOK)
+    }
+
     mutating func apply(manifest: StremioManifest, baseURL: URL) {
         self.baseURL = baseURL
         name = manifest.name
@@ -83,8 +185,13 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
         supportsMeta = manifest.supportsMeta
         supportsStream = manifest.supportsStream
         supportsSubtitles = manifest.supportsSubtitles
+        idPrefixes = manifest.idPrefixes
+        resourceTypes = manifest.types
+        isAdult = manifest.isAdult
+        isP2P = manifest.isP2P
+        isConfigurable = manifest.isConfigurable
+        requiresConfiguration = manifest.requiresConfiguration
         catalogs = manifest.catalogs.filter { catalog in
-            // Keep browsable catalogs; skip ones that require search-only extras.
             if catalog.supportsSearch { return true }
             return !catalog.requiresExtras
         }
@@ -168,41 +275,42 @@ enum StremioCuratedCatalog {
             StremioCuratedAddon(
                 id: "com.stremio.torrentio.addon",
                 name: "Torrentio",
-                blurb: "The most popular Stremio stream addon. May be blocked on some networks.",
+                blurb: "Popular torrent index. Needs Debrid (Real-Debrid / AllDebrid / …) for in-app HTTP playback — torrents alone never play on iOS.",
                 manifestURL: URL(string: "https://torrentio.strem.fun/manifest.json")!,
-                capabilities: "Stream",
+                capabilities: "Stream (Debrid)",
                 kind: .stream,
                 isPopularOptional: true,
-                networkNote: "Cloudflare may block some networks — paste a working mirror if install fails."
+                networkNote: "Cloudflare may block some networks. Prefer Install with Debrid, or paste a working mirror URL."
             ),
             StremioCuratedAddon(
                 id: "comet.elfhosted.com",
                 name: "Comet",
-                blurb: "ElfHosted stream resolver for movies and series.",
+                blurb: "ElfHosted stream resolver. Configure Debrid for playable HTTP links — no in-app BitTorrent.",
                 manifestURL: URL(string: "https://comet.elfhosted.com/manifest.json")!,
-                capabilities: "Stream",
+                capabilities: "Stream (Debrid)",
                 kind: .stream,
                 isPopularOptional: true,
-                networkNote: "Requires a healthy ElfHosted endpoint."
+                networkNote: "Requires a healthy ElfHosted endpoint. Use Install with Debrid after saving a token."
             ),
             StremioCuratedAddon(
                 id: "stremio.addons.mediafusion|elfhosted",
                 name: "MediaFusion",
-                blurb: "Multi-source stream and catalog addon (ElfHosted).",
+                blurb: "Multi-source stream and catalog addon. Pair with Debrid for torrents; HTTP mirrors play directly.",
                 manifestURL: URL(string: "https://mediafusion.elfhosted.com/manifest.json")!,
-                capabilities: "Stream · Catalog",
+                capabilities: "Stream · Catalog (Debrid)",
                 kind: .mixed,
-                isPopularOptional: true
+                isPopularOptional: true,
+                networkNote: "Install with Debrid for torrent sources."
             ),
             StremioCuratedAddon(
                 id: "org.stremio.watchhub",
                 name: "WatchHub",
-                blurb: "Shows where titles are available to rent or stream (external deep links).",
+                blurb: "Where to rent or stream titles. Opens external store links in Safari — not in-player HTTP.",
                 manifestURL: URL(string: "https://watchhub.strem.io/manifest.json")!,
-                capabilities: "Stream (external)",
+                capabilities: "External links",
                 kind: .stream,
                 isPopularOptional: true,
-                networkNote: "External store links only — not direct in-player HTTP."
+                networkNote: "Shows “Open in Safari” actions. Does not feed NativePlayer."
             ),
             StremioCuratedAddon(
                 id: "org.stremio.cinemeta-catalogs-imdbRating",
@@ -216,7 +324,7 @@ enum StremioCuratedCatalog {
             StremioCuratedAddon(
                 id: "xyz.stremio.wizdom",
                 name: "Wizdom Subtitles",
-                blurb: "Hebrew-focused subtitles via Stremio protocol.",
+                blurb: "Hebrew-focused subtitles via the Stremio protocol (separate from the native Wizdom provider).",
                 manifestURL: URL(string: "https://4b139a4b7f94-wizdom-stremio-v2.baby-beamup.club/manifest.json")!,
                 capabilities: "Subtitles",
                 kind: .subtitles,
@@ -225,7 +333,7 @@ enum StremioCuratedCatalog {
             StremioCuratedAddon(
                 id: "me.stremio.ktuvit",
                 name: "Ktuvit Subtitles",
-                blurb: "Ktuvit.me subtitles exposed as a Stremio addon.",
+                blurb: "Ktuvit.me subtitles as a Stremio addon (separate from the native Ktuvit provider).",
                 manifestURL: URL(string: "https://4b139a4b7f94-ktuvit-stremio.baby-beamup.club/manifest.json")!,
                 capabilities: "Subtitles",
                 kind: .subtitles,
@@ -233,6 +341,12 @@ enum StremioCuratedCatalog {
             ),
         ]
     }
+
+    /// Documented mirror hosts for Torrentio when the primary is blocked.
+    static let torrentioMirrorHosts: [String] = [
+        "torrentio.strem.fun",
+        "torrentio.elfhosted.com",
+    ]
 
     static var allPresets: [StremioCuratedAddon] { seedDefaults + popularPresets }
 
@@ -246,6 +360,12 @@ enum StremioCuratedCatalog {
     static func isBannedPlugin(url: URL, manifestID: String? = nil) -> Bool {
         let haystack = (url.absoluteString + " " + (manifestID ?? "")).lowercased()
         return bannedPluginHostFragments.contains { haystack.contains($0) }
+    }
+
+    static func isDebridStreamPreset(_ curated: StremioCuratedAddon) -> Bool {
+        ["torrentio", "comet", "mediafusion"].contains {
+            curated.id.lowercased().contains($0) || curated.name.lowercased().contains($0)
+        }
     }
 }
 
@@ -356,7 +476,14 @@ final class StremioAddonStore: ObservableObject {
             lastCheckedAt: Date(),
             lastError: nil,
             isCurated: curated,
-            latencyMS: nil
+            latencyMS: nil,
+            idPrefixes: loaded.manifest.idPrefixes,
+            resourceTypes: loaded.manifest.types,
+            isAdult: loaded.manifest.isAdult,
+            isP2P: loaded.manifest.isP2P,
+            isConfigurable: loaded.manifest.isConfigurable,
+            requiresConfiguration: loaded.manifest.requiresConfiguration,
+            streamSmokeOK: nil
         )
         addon.apply(manifest: loaded.manifest, baseURL: loaded.baseURL)
         addons.append(addon)
@@ -366,6 +493,17 @@ final class StremioAddonStore: ObservableObject {
 
     func installCurated(_ curated: StremioCuratedAddon) async throws {
         _ = try await install(from: curated.manifestURL.absoluteString, curated: true)
+    }
+
+    /// One-tap install with preferred Debrid token baked into the manifest URL.
+    func installCuratedWithDebrid(
+        _ curated: StremioCuratedAddon,
+        debrid: StremioDebridStore = .shared
+    ) async throws {
+        guard let url = debrid.configuredManifestURL(for: curated) else {
+            throw AppError.decoding("Add a Debrid token under Stremio → Debrid first")
+        }
+        _ = try await install(from: url.absoluteString, curated: true)
     }
 
     func remove(_ addon: InstalledStremioAddon) {
@@ -401,11 +539,32 @@ final class StremioAddonStore: ObservableObject {
             addons[index].latencyMS = ms
             addons[index].lastCheckedAt = Date()
             addons[index].lastError = nil
+            if loaded.manifest.version != addon.version {
+                // Version bump detected — health refresh already applied new version.
+            }
         } catch {
             addons[index].health = .unreachable
             addons[index].lastCheckedAt = Date()
             addons[index].lastError = error.localizedDescription
             addons[index].latencyMS = nil
+        }
+        persist()
+    }
+
+    /// Smoke-test stream resource with a known IMDb sample (B6).
+    func smokeTestStream(for addon: InstalledStremioAddon) async {
+        guard let index = addons.firstIndex(where: { $0.id == addon.id }),
+              addon.supportsStream else { return }
+        do {
+            let client = StremioAddonClient(client: self.client, baseURL: addon.baseURL)
+            _ = try await client.streams(type: "movie", id: "tt0133093")
+            addons[index].streamSmokeOK = true
+            if addons[index].health == .unknown {
+                addons[index].health = .healthy
+            }
+        } catch {
+            addons[index].streamSmokeOK = false
+            addons[index].lastError = error.localizedDescription
         }
         persist()
     }
@@ -445,27 +604,91 @@ final class StremioAddonStore: ObservableObject {
         }
     }
 
+    /// Export installed addon list as JSON (A8 / N4).
+    func exportAddonListJSON() throws -> Data {
+        let payload = addons.map {
+            [
+                "id": $0.id,
+                "name": $0.name,
+                "manifestURL": $0.manifestURL.absoluteString,
+                "enabled": $0.isEnabled ? "1" : "0",
+            ]
+        }
+        return try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+    }
+
+    func importAddonListJSON(_ data: Data) async throws -> Int {
+        guard let raw = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw AppError.decoding("Invalid Stremio addon list")
+        }
+        var count = 0
+        for entry in raw {
+            guard let url = entry["manifestURL"] as? String else { continue }
+            do {
+                var installed = try await install(from: url, curated: false)
+                if let enabled = entry["enabled"] as? String {
+                    setEnabled(installed, enabled: enabled != "0")
+                }
+                _ = installed
+                count += 1
+            } catch {
+                continue
+            }
+        }
+        return count
+    }
+
     /// Snapshot safe for background playback workers — installed community addons only.
     nonisolated static func snapshotStreamBaseURLs(
         defaults: UserDefaults = .standard
     ) -> [(id: String, name: String, baseURL: URL)] {
+        snapshotStreamAddons(defaults: defaults).map { ($0.id, $0.name, $0.baseURL) }
+    }
+
+    nonisolated static func snapshotStreamAddons(
+        defaults: UserDefaults = .standard
+    ) -> [(id: String, name: String, baseURL: URL, idPrefixes: [String]?, types: [String]?, requiresConfig: Bool, manifestURL: URL?)] {
         guard let data = defaults.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([InstalledStremioAddon].self, from: data) else {
             return []
         }
+        let adultOK = defaults.bool(forKey: StremioDebridStore.adultCatalogsKey)
         return decoded
             .filter {
                 $0.isEnabled
                     && $0.supportsStream
                     && !StremioCuratedCatalog.isBannedPlugin(url: $0.manifestURL, manifestID: $0.id)
+                    && (adultOK || !$0.isAdult)
             }
-            .sorted { $0.sortOrder < $1.sortOrder }
-            .map { ($0.id, $0.name, $0.baseURL) }
+            .sorted { lhs, rhs in
+                // Deprioritize unhealthy / slow addons (F2).
+                let lh = healthRank(lhs.health)
+                let rh = healthRank(rhs.health)
+                if lh != rh { return lh < rh }
+                return lhs.sortOrder < rhs.sortOrder
+            }
+            .map {
+                (
+                    $0.id,
+                    $0.name,
+                    $0.baseURL,
+                    $0.idPrefixes,
+                    $0.resourceTypes,
+                    $0.requiresConfiguration,
+                    $0.manifestURL as URL?
+                )
+            }
     }
 
     nonisolated static func snapshotSubtitleBaseURLs(
         defaults: UserDefaults = .standard
     ) -> [(id: String, name: String, baseURL: URL)] {
+        snapshotSubtitleAddons(defaults: defaults).map { ($0.id, $0.name, $0.baseURL) }
+    }
+
+    nonisolated static func snapshotSubtitleAddons(
+        defaults: UserDefaults = .standard
+    ) -> [(id: String, name: String, baseURL: URL, idPrefixes: [String]?)] {
         guard let data = defaults.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([InstalledStremioAddon].self, from: data) else {
             return []
@@ -477,7 +700,16 @@ final class StremioAddonStore: ObservableObject {
                     && !StremioCuratedCatalog.isBannedPlugin(url: $0.manifestURL, manifestID: $0.id)
             }
             .sorted { $0.sortOrder < $1.sortOrder }
-            .map { ($0.id, $0.name, $0.baseURL) }
+            .map { ($0.id, $0.name, $0.baseURL, $0.idPrefixes) }
+    }
+
+    nonisolated private static func healthRank(_ health: StremioAddonHealth) -> Int {
+        switch health {
+        case .healthy: 0
+        case .unknown: 1
+        case .degraded: 2
+        case .unreachable: 3
+        }
     }
 
     private func purgeBannedPluginsIfNeeded() {

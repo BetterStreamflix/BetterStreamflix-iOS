@@ -54,5 +54,17 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.betterstreamflix.ios</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>betterstreamflix</string>
+				<string>stremio</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

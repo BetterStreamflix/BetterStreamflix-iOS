@@ -663,6 +663,10 @@ struct CatalogView: View {
                         )
                     }
                 }
+
+                StremioCatalogKindShelvesView(kind: kind) { item in
+                    selectedDetails = ResolvedMediaItem(media: item, tmdbMetadata: nil)
+                }
             }
             .padding(.bottom)
             .background {

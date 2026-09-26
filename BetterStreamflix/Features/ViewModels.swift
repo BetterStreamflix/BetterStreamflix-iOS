@@ -409,9 +409,14 @@ final class SearchViewModel: ObservableObject {
             do {
                 let titles = try await environment.tmdbSearch(query: value).titles
                 guard searchGeneration == generation else { return }
-                results = titles.map {
-                    MediaItem.tmdbCatalogItem(from: $0)
+                var merged = titles.map { MediaItem.tmdbCatalogItem(from: $0) }
+                var seen = Set(merged.map(\.id))
+                let stremioHits = await StremioCatalogSearch.search(query: value)
+                for item in stremioHits where seen.insert(item.id).inserted {
+                    merged.append(item)
                 }
+                guard searchGeneration == generation else { return }
+                results = merged
                 rememberSearch(value)
             }
             catch where error.isCancellation { }
@@ -451,7 +456,39 @@ final class DetailsViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            item = try await environment.tmdbDetails(for: item)
+            // Prefer TMDB; enrich from Stremio meta when the item is addon-sourced or TMDB is thin.
+            let tmdbItem = try await environment.tmdbDetails(for: item)
+            item = tmdbItem
+            if item.providerID.hasPrefix("stremio:"),
+               (item.seasons.isEmpty || (item.overview?.isEmpty ?? true)),
+               let enriched = await StremioMetaEnricher.enrich(item: item) {
+                item = enriched
+            } else if item.seasons.isEmpty,
+                      item.kind == .series,
+                      let enriched = await StremioMetaEnricher.enrich(item: item) {
+                // Keep TMDB fields; merge seasons/episodes from addon meta when TMDB lacks them.
+                if !enriched.seasons.isEmpty {
+                    item = MediaItem(
+                        id: item.id,
+                        providerID: item.providerID,
+                        kind: item.kind,
+                        title: item.title,
+                        originalTitle: item.originalTitle,
+                        overview: item.overview ?? enriched.overview,
+                        releaseDate: item.releaseDate ?? enriched.releaseDate,
+                        rating: item.rating ?? enriched.rating,
+                        quality: item.quality,
+                        runtimeMinutes: item.runtimeMinutes,
+                        imdbID: item.imdbID ?? enriched.imdbID,
+                        tmdbID: item.tmdbID ?? enriched.tmdbID,
+                        posterURL: item.posterURL ?? enriched.posterURL,
+                        backdropURL: item.backdropURL ?? enriched.backdropURL,
+                        genres: item.genres.isEmpty ? enriched.genres : item.genres,
+                        cast: item.cast,
+                        seasons: enriched.seasons
+                    )
+                }
+            }
             if let season = orderedSeasons.first {
                 await loadEpisodes(season, environment: environment)
             }
@@ -460,15 +497,39 @@ final class DetailsViewModel: ObservableObject {
                 await loadEpisodes(season, environment: environment)
             }
         } catch where error.isCancellation { }
-        catch { errorMessage = error.localizedDescription }
+        catch {
+            // TMDB failed — try Stremio meta for pure addon items.
+            if let enriched = await StremioMetaEnricher.enrich(item: item) {
+                item = enriched
+                if let season = orderedSeasons.first {
+                    await loadEpisodes(season, environment: environment)
+                }
+            } else {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     func loadEpisodes(_ season: MediaSeason, environment: AppEnvironment) async {
         guard episodes[season.id] == nil else { return }
         do {
-            episodes[season.id] = try await environment.tmdbEpisodes(for: season, show: item)
+            let tmdbEpisodes = try await environment.tmdbEpisodes(for: season, show: item)
+            if tmdbEpisodes.isEmpty,
+               let addonEpisodes = await StremioMetaEnricher.episodes(for: season, show: item),
+               !addonEpisodes.isEmpty {
+                episodes[season.id] = addonEpisodes
+            } else {
+                episodes[season.id] = tmdbEpisodes
+            }
         } catch where error.isCancellation { }
-        catch { errorMessage = error.localizedDescription }
+        catch {
+            if let addonEpisodes = await StremioMetaEnricher.episodes(for: season, show: item),
+               !addonEpisodes.isEmpty {
+                episodes[season.id] = addonEpisodes
+            } else {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 
@@ -596,7 +657,13 @@ final class PlayerViewModel: ObservableObject {
             guard operation == token else { return }
             if let appError = error as? AppError, case .noStream = appError {
                 let language = AppSetupStore.activePlaybackLanguageGroup.title
-                errorMessage = "No \(language) sources found. Try another language in Settings, or tap Retry."
+                let stremio = StremioResolveDiagnosticsStore.current()
+                if AppSetupStore.isStremioPlaybackEnabled,
+                   (stremio.queriedAddons > 0 || stremio.skippedTorrent > 0 || stremio.missingIMDb) {
+                    errorMessage = "No \(language) sources found. \(stremio.userFacingSummary)"
+                } else {
+                    errorMessage = "No \(language) sources found. Try another language in Settings, enable Stremio + Debrid, or tap Retry."
+                }
             } else {
                 errorMessage = error.localizedDescription
             }
@@ -952,7 +1019,7 @@ final class PlayerViewModel: ObservableObject {
         case "opensubtitles": "OpenSubtitles"
         case "wizdom": "Wizdom"
         case "ktuvit": "Ktuvit"
-        case "external-stream-subtitles": "Stremio / External"
+        case "external-stream-subtitles": "Stremio"
         default: id
         }
     }

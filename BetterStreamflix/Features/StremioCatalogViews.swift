@@ -3,6 +3,7 @@ import SwiftUI
 struct StremioCatalogHubView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @ObservedObject private var store = StremioAddonStore.shared
+    @ObservedObject private var debrid = StremioDebridStore.shared
     @StateObject private var model = StremioCatalogHubModel()
     @State private var selectedItem: MediaItem?
     @State private var searchDraft = ""
@@ -35,12 +36,41 @@ struct StremioCatalogHubView: View {
                     addonPicker
                         .padding(.horizontal, 20)
 
+                    if !model.genreOptions.isEmpty {
+                        genrePicker
+                            .padding(.horizontal, 20)
+                    }
+
                     ForEach(model.shelves) { shelf in
-                        MediaShelfView(
-                            title: shelf.title,
-                            items: shelf.items,
-                            onDetails: { selectedItem = $0 }
-                        )
+                        VStack(alignment: .leading, spacing: 8) {
+                            MediaShelfView(
+                                title: shelf.title,
+                                items: shelf.items,
+                                onDetails: { selectedItem = $0 }
+                            )
+                            if shelf.canPaginate {
+                                Button {
+                                    Task {
+                                        await model.loadMore(
+                                            shelfID: shelf.id,
+                                            store: store,
+                                            client: HTTPClient()
+                                        )
+                                    }
+                                } label: {
+                                    Text(shelf.isLoadingMore ? "Loading…" : "Show more")
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 20)
+                                }
+                                .disabled(shelf.isLoadingMore)
+                            }
+                            if let error = shelf.errorMessage {
+                                Text(error)
+                                    .font(.caption2)
+                                    .foregroundStyle(Color(hex: 0xFF6B6B))
+                                    .padding(.horizontal, 20)
+                            }
+                        }
                     }
 
                     if model.isLoading {
@@ -70,11 +100,11 @@ struct StremioCatalogHubView: View {
         .navigationDestination(item: $selectedItem) { item in
             DetailsView(item: item)
         }
-        .task(id: store.addons.map(\.id) + [model.selectedAddonID ?? ""]) {
-            await model.load(store: store, client: HTTPClient())
+        .task(id: store.addons.map(\.id) + [model.selectedAddonID ?? "", model.selectedGenre ?? ""]) {
+            await model.load(store: store, client: HTTPClient(), adultOK: debrid.adultCatalogsOptIn)
         }
         .refreshable {
-            await model.load(store: store, client: HTTPClient(), force: true)
+            await model.load(store: store, client: HTTPClient(), force: true, adultOK: debrid.adultCatalogsOptIn)
         }
     }
 
@@ -82,7 +112,7 @@ struct StremioCatalogHubView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Addon catalogs")
                 .font(DesignTokens.Typography.shelfTitle)
-            Text("Browse remote Stremio catalogs. Play still goes through NativePlayer with your language providers and enabled stream addons.")
+            Text("Browse remote Stremio catalogs. Play still goes through NativePlayer with your language providers and enabled stream addons (Debrid for torrent indexes).")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             NavigationLink {
@@ -142,8 +172,19 @@ struct StremioCatalogHubView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 filterChip(id: nil, title: "All addons")
-                ForEach(store.catalogAddons) { addon in
+                ForEach(store.catalogAddons.filter { debrid.adultCatalogsOptIn || !$0.isAdult }) { addon in
                     filterChip(id: addon.id, title: addon.name)
+                }
+            }
+        }
+    }
+
+    private var genrePicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                genreChip(nil, title: "All genres")
+                ForEach(model.genreOptions, id: \.self) { genre in
+                    genreChip(genre, title: genre)
                 }
             }
         }
@@ -154,7 +195,44 @@ struct StremioCatalogHubView: View {
         return Button {
             model.selectedAddonID = id
             DesignTokens.Haptics.selection()
-            Task { await model.load(store: store, client: HTTPClient(), force: true) }
+            Task {
+                await model.load(
+                    store: store,
+                    client: HTTPClient(),
+                    force: true,
+                    adultOK: debrid.adultCatalogsOptIn
+                )
+            }
+        } label: {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+        .glassEffectWithFallback(in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(
+                    selected ? environment.theme.accentBright.opacity(0.95) : Color.clear,
+                    lineWidth: 1.2
+                )
+        }
+    }
+
+    private func genreChip(_ genre: String?, title: String) -> some View {
+        let selected = model.selectedGenre == genre
+        return Button {
+            model.selectedGenre = genre
+            DesignTokens.Haptics.selection()
+            Task {
+                await model.load(
+                    store: store,
+                    client: HTTPClient(),
+                    force: true,
+                    adultOK: debrid.adultCatalogsOptIn
+                )
+            }
         } label: {
             Text(title)
                 .font(.caption.weight(.semibold))
@@ -215,84 +293,205 @@ final class StremioCatalogHubModel: ObservableObject {
     struct Shelf: Identifiable, Hashable {
         let id: String
         let title: String
-        let items: [MediaItem]
+        var items: [MediaItem]
+        var skip: Int
+        var canPaginate: Bool
+        var isLoadingMore: Bool
+        var errorMessage: String?
+        let addonID: String
+        let catalogType: String
+        let catalogID: String
     }
 
     @Published private(set) var shelves: [Shelf] = []
     @Published private(set) var searchResults: [MediaItem] = []
     @Published private(set) var isLoading = false
     @Published private(set) var message: String?
+    @Published private(set) var genreOptions: [String] = []
     @Published var selectedAddonID: String?
+    @Published var selectedGenre: String?
+
+    private let pageSize = 40
+    private let maxCatalogsPerAddon = 12
 
     func clearSearch() {
         searchResults = []
     }
 
-    func load(store: StremioAddonStore, client: any HTTPClientProtocol, force: Bool = false) async {
+    func load(
+        store: StremioAddonStore,
+        client: any HTTPClientProtocol,
+        force: Bool = false,
+        adultOK: Bool = false,
+        typeFilter: String? = nil,
+        maxShelves: Int? = nil
+    ) async {
         guard !isLoading || force else { return }
         isLoading = true
         message = nil
         defer { isLoading = false }
 
         let addons = store.catalogAddons.filter { addon in
+            if !adultOK && addon.isAdult { return false }
             guard let selectedAddonID else { return true }
             return addon.id == selectedAddonID
         }
 
-        var built: [Shelf] = []
+        var options = Set<String>()
         for addon in addons {
-            let addonClient = StremioAddonClient(client: client, baseURL: addon.baseURL)
-            let catalogs = addon.catalogs
-                .filter { ["movie", "series", "anime", "channel"].contains($0.type) }
-                .prefix(6)
-            for catalog in catalogs {
-                do {
-                    let metas = try await addonClient.catalog(type: catalog.type, id: catalog.id)
-                    let items = metas.prefix(24).map {
-                        $0.asMediaItem(providerID: "stremio:\(addon.id)")
-                    }
-                    guard !items.isEmpty else { continue }
-                    let title = "\(addon.name) · \(catalog.displayName)"
-                    built.append(
-                        Shelf(id: "\(addon.id):\(catalog.stableID)", title: title, items: Array(items))
-                    )
-                } catch {
-                    continue
-                }
+            for catalog in addon.catalogs where catalog.supportsGenre {
+                options.formUnion(catalog.genreOptions)
             }
         }
+        genreOptions = options.sorted()
+
+        // Parallel catalog fetches (F1).
+        let genre = selectedGenre
+        let pageSize = self.pageSize
+        let results: [(Shelf, String?)] = await withTaskGroup(
+            of: (Shelf, String?).self,
+            returning: [(Shelf, String?)].self
+        ) { group in
+            for addon in addons {
+                let catalogs = addon.catalogs
+                    .filter { catalog in
+                        if let typeFilter {
+                            return catalog.type == typeFilter
+                        }
+                        return ["movie", "series", "anime", "channel"].contains(catalog.type)
+                    }
+                    .prefix(maxCatalogsPerAddon)
+                for catalog in catalogs {
+                    group.addTask {
+                        let addonClient = StremioAddonClient(client: client, baseURL: addon.baseURL)
+                        var extras: [String: String] = [:]
+                        if let genre, catalog.supportsGenre {
+                            extras["genre"] = genre
+                        }
+                        do {
+                            let metas = try await addonClient.catalog(
+                                type: catalog.type,
+                                id: catalog.id,
+                                extras: extras
+                            )
+                            let items = metas.prefix(pageSize).map {
+                                $0.asMediaItem(providerID: "stremio:\(addon.id)")
+                            }
+                            let shelf = Shelf(
+                                id: "\(addon.id):\(catalog.stableID)",
+                                title: "\(addon.name) · \(catalog.displayName)",
+                                items: Array(items),
+                                skip: items.count,
+                                canPaginate: catalog.supportsSkip && metas.count >= pageSize,
+                                isLoadingMore: false,
+                                errorMessage: nil,
+                                addonID: addon.id,
+                                catalogType: catalog.type,
+                                catalogID: catalog.id
+                            )
+                            return (shelf, nil as String?)
+                        } catch {
+                            let empty = Shelf(
+                                id: "\(addon.id):\(catalog.stableID)",
+                                title: "\(addon.name) · \(catalog.displayName)",
+                                items: [],
+                                skip: 0,
+                                canPaginate: false,
+                                isLoadingMore: false,
+                                errorMessage: error.localizedDescription,
+                                addonID: addon.id,
+                                catalogType: catalog.type,
+                                catalogID: catalog.id
+                            )
+                            return (empty, error.localizedDescription)
+                        }
+                    }
+                }
+            }
+            var collected: [(Shelf, String?)] = []
+            for await pair in group {
+                collected.append(pair)
+            }
+            return collected
+        }
+
+        var built = results.map(\.0).filter { !$0.items.isEmpty || $0.errorMessage != nil }
+        if let maxShelves {
+            built = Array(built.prefix(maxShelves))
+        }
         shelves = built
-        if built.isEmpty {
+        let errors = results.compactMap(\.1)
+        if built.filter({ !$0.items.isEmpty }).isEmpty {
             message = store.catalogAddons.isEmpty
                 ? nil
-                : "Catalogs didn’t return items. Check plugin health in Manage plugins."
+                : (errors.first.map { "Catalog error: \($0)" }
+                    ?? "Catalogs didn’t return items. Check plugin health in Manage plugins.")
         }
+    }
+
+    func loadMore(shelfID: String, store: StremioAddonStore, client: any HTTPClientProtocol) async {
+        guard let index = shelves.firstIndex(where: { $0.id == shelfID }) else { return }
+        guard shelves[index].canPaginate, !shelves[index].isLoadingMore else { return }
+        shelves[index].isLoadingMore = true
+        let shelf = shelves[index]
+        guard let addon = store.catalogAddons.first(where: { $0.id == shelf.addonID }) else {
+            shelves[index].isLoadingMore = false
+            return
+        }
+        do {
+            let addonClient = StremioAddonClient(client: client, baseURL: addon.baseURL)
+            var extras: [String: String] = ["skip": "\(shelf.skip)"]
+            if let genre = selectedGenre { extras["genre"] = genre }
+            let metas = try await addonClient.catalog(
+                type: shelf.catalogType,
+                id: shelf.catalogID,
+                extras: extras
+            )
+            let items = metas.prefix(pageSize).map {
+                $0.asMediaItem(providerID: "stremio:\(addon.id)")
+            }
+            shelves[index].items.append(contentsOf: items)
+            shelves[index].skip += items.count
+            shelves[index].canPaginate = items.count >= pageSize
+            shelves[index].errorMessage = nil
+        } catch {
+            shelves[index].errorMessage = error.localizedDescription
+        }
+        shelves[index].isLoadingMore = false
     }
 
     func search(query: String, store: StremioAddonStore, client: any HTTPClientProtocol) async {
         var results: [MediaItem] = []
         var seen = Set<String>()
-        for addon in store.catalogAddons {
-            let searchable = addon.catalogs.filter(\.supportsSearch)
-            let targets = searchable.isEmpty
-                ? Array(addon.catalogs.prefix(2))
-                : Array(searchable.prefix(3))
-            let addonClient = StremioAddonClient(client: client, baseURL: addon.baseURL)
-            for catalog in targets {
-                do {
-                    let metas = try await addonClient.catalog(
-                        type: catalog.type,
-                        id: catalog.id,
-                        extras: ["search": query]
-                    )
-                    for meta in metas.prefix(20) {
-                        let item = meta.asMediaItem(providerID: "stremio:\(addon.id)")
-                        if seen.insert(item.id).inserted {
-                            results.append(item)
+        await withTaskGroup(of: [MediaItem].self) { group in
+            for addon in store.catalogAddons {
+                let searchable = addon.catalogs.filter(\.supportsSearch)
+                let targets = searchable.isEmpty
+                    ? Array(addon.catalogs.prefix(2))
+                    : Array(searchable.prefix(4))
+                group.addTask {
+                    let addonClient = StremioAddonClient(client: client, baseURL: addon.baseURL)
+                    var local: [MediaItem] = []
+                    for catalog in targets {
+                        do {
+                            let metas = try await addonClient.catalog(
+                                type: catalog.type,
+                                id: catalog.id,
+                                extras: ["search": query]
+                            )
+                            local.append(contentsOf: metas.prefix(24).map {
+                                $0.asMediaItem(providerID: "stremio:\(addon.id)")
+                            })
+                        } catch {
+                            continue
                         }
                     }
-                } catch {
-                    continue
+                    return local
+                }
+            }
+            for await batch in group {
+                for item in batch where seen.insert(item.id).inserted {
+                    results.append(item)
                 }
             }
         }
@@ -305,13 +504,17 @@ final class StremioCatalogHubModel: ObservableObject {
 
 struct StremioHomeShelvesView: View {
     @ObservedObject private var store = StremioAddonStore.shared
+    @ObservedObject private var debrid = StremioDebridStore.shared
     @StateObject private var model = StremioCatalogHubModel()
+    @State private var ready = false
     var onDetails: (MediaItem) -> Void
+    var typeFilter: String? = nil
+    var maxShelves: Int = 4
 
     var body: some View {
         Group {
-            if !model.shelves.isEmpty {
-                ForEach(model.shelves.prefix(4)) { shelf in
+            if ready, !model.shelves.isEmpty {
+                ForEach(model.shelves.prefix(maxShelves).filter { !$0.items.isEmpty }) { shelf in
                     MediaShelfView(
                         title: shelf.title,
                         items: shelf.items,
@@ -321,7 +524,30 @@ struct StremioHomeShelvesView: View {
             }
         }
         .task(id: store.enabledAddons.map(\.id)) {
-            await model.load(store: store, client: HTTPClient())
+            // Lazy after first frame so Home hero isn't blocked (F3).
+            try? await Task.sleep(for: .milliseconds(350))
+            await model.load(
+                store: store,
+                client: HTTPClient(),
+                adultOK: debrid.adultCatalogsOptIn,
+                typeFilter: typeFilter,
+                maxShelves: maxShelves
+            )
+            ready = true
         }
+    }
+}
+
+/// Movies / Series tab Stremio shelves.
+struct StremioCatalogKindShelvesView: View {
+    let kind: MediaKind
+    var onDetails: (MediaItem) -> Void
+
+    var body: some View {
+        StremioHomeShelvesView(
+            onDetails: onDetails,
+            typeFilter: kind == .movie ? "movie" : "series",
+            maxShelves: 6
+        )
     }
 }
