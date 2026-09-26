@@ -416,7 +416,7 @@ enum StremioCuratedCatalog {
 final class StremioAddonStore: ObservableObject {
     static let shared = StremioAddonStore()
 
-    static let storageKey = "stremio.addons.installed.v1"
+    nonisolated(unsafe) static let storageKey = "stremio.addons.installed.v1"
     static let seededKey = "stremio.addons.seeded.v1"
     static let purgedBundledKey = "stremio.addons.purgedBundled.v2"
     static let playbackEnabledKey = "playback.stremio.enabled"
@@ -426,6 +426,7 @@ final class StremioAddonStore: ObservableObject {
     @Published private(set) var isBusy = false
     @Published private(set) var presetReachability: [String: StremioAddonHealth] = [:]
     @Published var lastInstallError: String?
+    @Published private(set) var lastSeedFailures: [String] = []
 
     private let client: any HTTPClientProtocol
     private let defaults: UserDefaults
@@ -647,20 +648,32 @@ final class StremioAddonStore: ObservableObject {
         persist()
     }
 
-    /// Smoke-test stream resource with a known IMDb sample (B6).
+    /// Smoke-test stream resource with known sample IDs (IMDb + TMDB).
     func smokeTestStream(for addon: InstalledStremioAddon) async {
         guard let index = addons.firstIndex(where: { $0.id == addon.id }),
               addon.supportsStream else { return }
-        do {
-            let client = StremioAddonClient(client: self.client, baseURL: addon.baseURL)
-            _ = try await client.streams(type: "movie", id: "tt0133093")
-            addons[index].streamSmokeOK = true
+        let samples = ["tt0133093", "tmdb:603", "tt0944947:1:1"]
+        var ok = false
+        var lastError: String?
+        for sample in samples {
+            let type = sample.contains(":") && sample.split(separator: ":").count >= 3 ? "series" : "movie"
+            do {
+                let client = StremioAddonClient(client: self.client, baseURL: addon.baseURL)
+                _ = try await client.streams(type: type, id: sample)
+                ok = true
+                break
+            } catch {
+                lastError = error.localizedDescription
+            }
+        }
+        addons[index].streamSmokeOK = ok
+        if ok {
             if addons[index].health == .unknown {
                 addons[index].health = .healthy
             }
-        } catch {
-            addons[index].streamSmokeOK = false
-            addons[index].lastError = error.localizedDescription
+            addons[index].lastError = nil
+        } else {
+            addons[index].lastError = lastError
         }
         persist()
     }
@@ -841,13 +854,15 @@ final class StremioAddonStore: ObservableObject {
     }
 
     func seedCuratedDefaults() async {
+        var failures: [String] = []
         for curated in StremioCuratedCatalog.seedDefaults where !isInstalled(curated: curated) {
             do {
                 _ = try await install(from: curated.manifestURL.absoluteString, curated: true)
             } catch {
-                // Best-effort seed; user can retry from Settings.
+                failures.append("\(curated.name): \(error.localizedDescription)")
             }
         }
+        lastSeedFailures = failures
         if defaults.object(forKey: Self.playbackEnabledKey) == nil,
            AppSetupStore.isPlaybackSourceEnabled(.stremio) {
             defaults.set(true, forKey: Self.playbackEnabledKey)

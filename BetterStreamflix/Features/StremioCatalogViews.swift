@@ -560,6 +560,7 @@ final class StremioCatalogHubModel: ObservableObject {
 }
 
 struct StremioHomeShelvesView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     @ObservedObject private var store = StremioAddonStore.shared
     @ObservedObject private var debrid = StremioDebridStore.shared
     @StateObject private var model = StremioCatalogHubModel()
@@ -568,27 +569,66 @@ struct StremioHomeShelvesView: View {
     var typeFilter: String? = nil
     var maxShelves: Int = 4
 
+    private var orderedShelves: [StremioCatalogHubModel.Shelf] {
+        let favorites = StremioFavoriteCatalogsStore.favorites
+        let filled = model.shelves.filter { !$0.items.isEmpty }
+        let pinned = filled.filter { favorites.contains($0.id) }
+        let rest = filled.filter { !favorites.contains($0.id) }
+        return Array((pinned + rest).prefix(maxShelves))
+    }
+
     var body: some View {
         Group {
-            if ready, !model.shelves.isEmpty {
-                ForEach(model.shelves.prefix(maxShelves).filter { !$0.items.isEmpty }) { shelf in
-                    MediaShelfView(
-                        title: shelf.title,
-                        items: shelf.items,
-                        onDetails: onDetails
-                    )
+            if ready, !orderedShelves.isEmpty {
+                HStack {
+                    Text("Stremio")
+                        .font(DesignTokens.Typography.shelfTitle)
+                    Spacer()
+                    NavigationLink {
+                        StremioCatalogHubView()
+                    } label: {
+                        Text("See all")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(environment.theme.accentBright)
+                    }
+                }
+                .padding(.horizontal, 20)
+
+                ForEach(orderedShelves) { shelf in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Spacer(minLength: 0)
+                            Button {
+                                StremioFavoriteCatalogsStore.toggle(shelf.id)
+                                DesignTokens.Haptics.selection()
+                            } label: {
+                                Image(systemName: StremioFavoriteCatalogsStore.isFavorite(shelf.id) ? "star.fill" : "star")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(environment.theme.accentBright)
+                                    .padding(.trailing, 20)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                StremioFavoriteCatalogsStore.isFavorite(shelf.id) ? "Unpin catalog" : "Pin catalog"
+                            )
+                        }
+                        MediaShelfView(
+                            title: shelf.title,
+                            items: shelf.items,
+                            onDetails: onDetails
+                        )
+                    }
                 }
             }
         }
         .task(id: store.enabledAddons.map(\.id)) {
-            // Lazy after first frame so Home hero isn't blocked (F3).
             try? await Task.sleep(for: .milliseconds(350))
             await model.load(
                 store: store,
                 client: HTTPClient(),
                 adultOK: debrid.adultCatalogsOptIn,
                 typeFilter: typeFilter,
-                maxShelves: maxShelves
+                maxShelves: maxShelves + 4
             )
             ready = true
         }

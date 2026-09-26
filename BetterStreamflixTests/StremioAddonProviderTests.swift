@@ -380,6 +380,16 @@ struct StremioAddonProviderTests {
         let base = URL(string: "https://torrentio.strem.fun/")!
         #expect(manifest.configurationURL(relativeTo: base)?.absoluteString.hasSuffix("/configure") == true)
     }
+
+    @Test("fileIdx decodes on torrent streams")
+    func fileIdxDecode() throws {
+        let json = Data(#"""
+        {"name":"Torrent","infoHash":"abcdefghijklmnopqrstuvwxyz1234567890abcd","fileIdx":2}
+        """#.utf8)
+        let stream = try JSONDecoder().decode(StremioStream.self, from: json)
+        #expect(stream.fileIdx == 2)
+        #expect(stream.playbackKind == .torrent)
+    }
 }
 
 private final class StremioFixtureClient: HTTPClientProtocol, @unchecked Sendable {

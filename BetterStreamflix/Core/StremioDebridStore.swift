@@ -276,24 +276,25 @@ enum StremioDebridAccountClient {
         let response = try await client.data(for: request)
         let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
         let username = json["username"] as? String
-        let premium = (json["premium"] as? Int).map { $0 > 0 }
-            ?? ((json["type"] as? String)?.lowercased() == "premium")
-        let days = json["expiration"] as? String
-        let premiumDays: Int?
-        if let days, let expiry = ISO8601DateFormatter().date(from: days) {
-            premiumDays = max(0, Calendar.current.dateComponents([.day], from: Date(), to: expiry).day ?? 0)
-        } else {
-            premiumDays = json["premium"] as? Int
-        }
-        return StremioDebridAccountStatus(
-            username: username,
-            email: json["email"] as? String,
-            premiumDays: premiumDays,
-            isPremium: premium ?? false,
-            points: json["points"] as? Int,
-            detail: premium == true ? nil : "Not premium",
-            checkedAt: Date()
-        )
+            let premium = (json["premium"] as? Int).map { $0 > 0 }
+                ?? ((json["type"] as? String)?.lowercased() == "premium")
+                ?? false
+            let days = json["expiration"] as? String
+            let premiumDays: Int?
+            if let days, let expiry = ISO8601DateFormatter().date(from: days) {
+                premiumDays = max(0, Calendar.current.dateComponents([.day], from: Date(), to: expiry).day ?? 0)
+            } else {
+                premiumDays = json["premium"] as? Int
+            }
+            return StremioDebridAccountStatus(
+                username: username,
+                email: json["email"] as? String,
+                premiumDays: premiumDays,
+                isPremium: premium,
+                points: json["points"] as? Int,
+                detail: premium ? nil : "Not premium",
+                checkedAt: Date()
+            )
     }
 
     private static func validateAllDebrid(
@@ -366,8 +367,7 @@ enum StremioDebridAccountClient {
         let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
         let dataObj = json["data"] as? [String: Any] ?? json
         let isPremium = (dataObj["premium"] as? Bool)
-            ?? ((dataObj["plan"] as? String)?.lowercased().contains("free") == false)
-            ?? false
+            ?? ((dataObj["plan"] as? String).map { !$0.lowercased().contains("free") } ?? false)
         return StremioDebridAccountStatus(
             username: dataObj["email"] as? String ?? dataObj["user"] as? String,
             email: dataObj["email"] as? String,
@@ -406,14 +406,15 @@ enum StremioBingeContinuityStore {
 final class StremioDebridStore: ObservableObject {
     static let shared = StremioDebridStore()
 
-    static let preferredServiceKey = "stremio.debrid.preferredService.v1"
-    static let adultCatalogsKey = "stremio.catalogs.adultOptIn.v1"
-    static let streamTimeoutKey = "stremio.stream.queryTimeout.v1"
-    static let maxParallelKey = "stremio.stream.maxParallel.v1"
+    nonisolated(unsafe) static let preferredServiceKey = "stremio.debrid.preferredService.v1"
+    nonisolated(unsafe) static let adultCatalogsKey = "stremio.catalogs.adultOptIn.v1"
+    nonisolated(unsafe) static let streamTimeoutKey = "stremio.stream.queryTimeout.v1"
+    nonisolated(unsafe) static let maxParallelKey = "stremio.stream.maxParallel.v1"
     static let preferCachedKey = "stremio.stream.preferCached.v1"
     static let maxSizeGBKey = "stremio.stream.maxPreferredSizeGB.v1"
     static let installCachedOnlyKey = "stremio.debrid.install.cachedOnly.v1"
     static let installQualitiesKey = "stremio.debrid.install.qualities.v1"
+    nonisolated(unsafe) static let directUnrestrictKey = "stremio.debrid.directUnrestrict.v1"
     private static let keychainService = "com.betterstreamflix.ios.stremio.debrid"
 
     @Published private(set) var profiles: [StremioDebridProfile] = []
@@ -422,6 +423,18 @@ final class StremioDebridStore: ObservableObject {
     @Published var preferredService: StremioDebridService {
         didSet {
             UserDefaults.standard.set(preferredService.rawValue, forKey: Self.preferredServiceKey)
+        }
+    }
+
+    /// When torrents lack HTTP, attempt provider-side magnet unrestrict via the preferred Debrid API.
+    var directMagnetUnrestrictEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: Self.directUnrestrictKey) == nil { return true }
+            return UserDefaults.standard.bool(forKey: Self.directUnrestrictKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.directUnrestrictKey)
+            objectWillChange.send()
         }
     }
 
@@ -522,7 +535,7 @@ final class StremioDebridStore: ObservableObject {
         let cleaned = token.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.isEmpty {
             Self.deleteToken(service: service)
-            accountStatuses[service] = nil
+            accountStatuses.removeValue(forKey: service)
         } else {
             Self.saveToken(cleaned, service: service)
         }
@@ -720,7 +733,7 @@ struct StremioResolveDiagnostics: Sendable, Hashable {
 
 enum StremioResolveDiagnosticsStore {
     private static let lock = NSLock()
-    private static var latest = StremioResolveDiagnostics()
+    nonisolated(unsafe) private static var latest = StremioResolveDiagnostics()
 
     static func update(_ value: StremioResolveDiagnostics) {
         lock.withLock { latest = value }

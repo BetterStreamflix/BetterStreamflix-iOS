@@ -1768,22 +1768,22 @@ struct PlayerScreen: View {
             session.applySubtitleAppearance()
         }
         .overlay(alignment: .top) {
-            if let subtitleStudioUnavailableMessage {
-                Text(subtitleStudioUnavailableMessage)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.top, ScreenMetrics.topSafeAreaInset + 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            VStack(spacing: 8) {
+                subtitleStudioToastOverlay
+                if model.isSearching {
+                    StremioResolveHUDView(
+                        diagnostics: model.stremioDiagnostics,
+                        isSearching: true
+                    )
+                    .padding(.top, ScreenMetrics.topSafeAreaInset + 56)
+                }
             }
         }
         .overlay(alignment: .bottom) {
             if model.source == nil,
                model.errorMessage != nil,
                !model.isLoading {
-                stremioEmptyActions
+                StremioPlayerEmptyActionsView(diagnostics: model.stremioDiagnostics)
                     .padding(.horizontal, 20)
                     .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1794,52 +1794,17 @@ struct PlayerScreen: View {
     }
 
     @ViewBuilder
-    private var stremioEmptyActions: some View {
-        let diag = model.stremioDiagnostics
-        VStack(spacing: 10) {
-            if !diag.perAddon.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(diag.perAddon) { row in
-                            Text(row.chipTitle)
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.ultraThinMaterial, in: Capsule())
-                        }
-                    }
-                }
-            }
-            HStack(spacing: 10) {
-                if let url = diag.primaryExternalURL {
-                    Button {
-                        UIApplication.shared.open(url)
-                    } label: {
-                        Label("Open in Safari", systemImage: "safari")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                if let yt = diag.primaryYouTubeURL {
-                    Button {
-                        UIApplication.shared.open(yt)
-                    } label: {
-                        Label("YouTube", systemImage: "play.rectangle.fill")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.bordered)
-                }
-                if diag.skippedTorrent > 0 {
-                    Text(diag.debridConfigured ? "Validate Debrid in More → Stremio" : "Add Debrid in More → Stremio")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                }
-            }
+    private var subtitleStudioToastOverlay: some View {
+        if let subtitleStudioUnavailableMessage {
+            Text(subtitleStudioUnavailableMessage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.top, ScreenMetrics.topSafeAreaInset + 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
         }
-        .padding(14)
-        .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func cancelPendingSourceSwitch() {

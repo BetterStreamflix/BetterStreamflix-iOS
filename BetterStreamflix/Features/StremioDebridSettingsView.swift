@@ -114,6 +114,10 @@ struct StremioDebridSettingsView: View {
                     get: { debrid.preferCachedDebridLinks },
                     set: { debrid.preferCachedDebridLinks = $0 }
                 ))
+                Toggle("Direct magnet → HTTP via Debrid API", isOn: Binding(
+                    get: { debrid.directMagnetUnrestrictEnabled },
+                    set: { debrid.directMagnetUnrestrictEnabled = $0 }
+                ))
                 Stepper(
                     "Max preferred size: \(debrid.maxPreferredSizeGB == 0 ? "Any" : "\(debrid.maxPreferredSizeGB) GB")",
                     value: Binding(
@@ -126,7 +130,7 @@ struct StremioDebridSettingsView: View {
             } header: {
                 Text("Playback ranking")
             } footer: {
-                Text("Cached `[RD+]` links rank first. Soft size caps demote huge REMUXes unless you opt into larger files.")
+                Text("Cached `[RD+]` links rank first. Direct magnet unrestrict uses your Debrid API when addons only return torrents — still no in-app BitTorrent.")
             }
             .listRowBackground(AppTheme.surface)
 

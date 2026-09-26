@@ -31,6 +31,27 @@ struct StremioAddonsSettingsView: View {
                 healthSection
                 toolsSection
             }
+            if !store.lastSeedFailures.isEmpty {
+                Section {
+                    ForEach(store.lastSeedFailures, id: \.self) { failure in
+                        Text(failure)
+                            .font(.caption)
+                            .foregroundStyle(Color(hex: 0xF0C24B))
+                    }
+                    Button("Retry recommended seeds") {
+                        Task {
+                            await store.seedCuratedDefaults()
+                            banner = store.lastSeedFailures.isEmpty
+                                ? "Recommended addons installed"
+                                : "Some seeds still failed — check network"
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                } header: {
+                    Text("Seed warnings")
+                }
+                .listRowBackground(AppTheme.surface)
+            }
             seedSection
             popularSection
             mirrorSection
@@ -294,10 +315,26 @@ struct StremioAddonsSettingsView: View {
             } label: {
                 Label("Import addon list", systemImage: "square.and.arrow.down")
             }
+            if let first = store.streamAddons.first {
+                ShareLink(
+                    item: first.manifestURL.absoluteString,
+                    subject: Text("Stremio addon"),
+                    message: Text("Install \(first.name) in BetterStreamflix")
+                ) {
+                    Label("Share a stream addon URL", systemImage: "square.and.arrow.up.on.square")
+                }
+            }
+            Button("Clear catalog cache") {
+                Task {
+                    await StremioAddonCache.shared.clear()
+                    await StremioStreamSessionCache.shared.clear()
+                    banner = "Caches cleared"
+                }
+            }
         } header: {
-            Text("Backup")
+            Text("Backup & share")
         } footer: {
-            Text("Exports only Stremio plugin URLs (not Debrid tokens). Full app backup still includes preferences.")
+            Text("Exports only Stremio plugin URLs (not Debrid tokens). Full app backup still includes preferences. Share copies a manifest URL for another device.")
         }
         .listRowBackground(AppTheme.surface)
     }

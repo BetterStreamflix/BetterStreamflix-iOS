@@ -30,6 +30,11 @@ struct StremioPlaybackProvider: PlaybackProvider {
     }
 
     func candidates(for context: PlaybackLookupContext) async throws -> [PlaybackCandidate] {
+        let cacheKey = StremioStreamSessionCache.cacheKey(for: context)
+        if let cached = await StremioStreamSessionCache.shared.candidates(for: cacheKey), !cached.isEmpty {
+            return cached
+        }
+
         let addons = fixedAddons ?? StremioAddonStore.snapshotStreamAddons()
         var diagnostics = StremioResolveDiagnostics()
         diagnostics.debridConfigured = Self.isDebridConfigured()
@@ -146,6 +151,9 @@ struct StremioPlaybackProvider: PlaybackProvider {
 
             diagnostics.perAddon = progressRows
             StremioResolveDiagnosticsStore.update(diagnostics)
+            if !merged.isEmpty {
+                await StremioStreamSessionCache.shared.store(merged, for: cacheKey)
+            }
             return merged
         }
     }
@@ -213,10 +221,29 @@ struct StremioPlaybackProvider: PlaybackProvider {
             }
 
             var built: [PlaybackCandidate] = []
+            let allowDirect = Self.directUnrestrictEnabled()
+            let debridCreds = allowDirect ? Self.preferredDebridCredentials() : nil
             for (index, stream) in streams.enumerated() {
                 switch stream.playbackKind {
                 case .torrent:
                     stats.torrent += 1
+                    if let hash = stream.infoHash,
+                       let creds = debridCreds,
+                       let candidate = await debridCandidate(
+                        stream,
+                        infoHash: hash,
+                        order: index,
+                        context: context,
+                        addonID: addon.id,
+                        addonName: addon.name,
+                        providerID: providerID,
+                        service: creds.service,
+                        token: creds.token,
+                        client: client
+                       ) {
+                        built.append(candidate)
+                        stats.playable += 1
+                    }
                 case .youtube:
                     stats.youtube += 1
                     if let yt = stream.ytId { stats.youtubeIDs.append(yt) }
@@ -466,6 +493,120 @@ struct StremioPlaybackProvider: PlaybackProvider {
             .components(separatedBy: "?")
             .first?
             .lowercased()
+    }
+
+    private static func debridCandidate(
+        _ stream: StremioStream,
+        infoHash: String,
+        order: Int,
+        context: PlaybackLookupContext,
+        addonID: String,
+        addonName: String,
+        providerID: String,
+        service: StremioDebridService,
+        token: String,
+        client: any HTTPClientProtocol
+    ) async -> PlaybackCandidate? {
+        let detail = stream.detailText
+        let origin = cleanedName(stream.name)
+            ?? cleanedName(stream.title)
+            ?? "\(service.shortTitle) · \(addonName)"
+        let quality = capture(#"(?i)(2160p|1080p|720p|480p|360p|4K)"#, in: detail)
+            ?? capture(#"(?i)(2160p|1080p|720p|480p|360p|4K)"#, in: stream.displayLabel)
+        let release = capture(#"(?i)\b(BluRay|WEB-DL|WEBRip|HDR|REMUX|HDTV|DVDRip)\b"#, in: detail)
+        let filename = stream.behaviorHints?.filename
+        let bingeGroup = stream.behaviorHints?.bingeGroup
+        let fileIdx = stream.fileIdx
+        let stableServer = [
+            addonID,
+            "debrid",
+            service.rawValue,
+            infoHash,
+            fileIdx.map(String.init) ?? "\(order)",
+            quality ?? "",
+            bingeGroup ?? "",
+            filename ?? "",
+        ].joined(separator: "|")
+        let preference = PlaybackSourcePreference(
+            providerID: providerID,
+            serverName: stableServer,
+            audioLanguage: ""
+        )
+        let candidateID = "\(providerID):\(stableServer.lowercased())"
+        let labelOrigin = "\(origin) · \(service.shortTitle)+ · \(addonName)"
+        let metadata = StreamDisplayMetadata(
+            origin: labelOrigin,
+            quality: quality,
+            sizeBytes: stream.behaviorHints?.videoSize,
+            container: "HTTP",
+            audioLanguage: nil,
+            releaseType: release,
+            addonName: addonName,
+            addonID: addonID,
+            isDebridCached: stream.looksDebridCached ? true : nil,
+            bingeGroup: bingeGroup,
+            seedersHint: stream.seedersHint
+        )
+        let showID = context.request.media.id
+        return PlaybackCandidate(
+            id: candidateID,
+            preference: preference,
+            providerName: labelOrigin,
+            subtitleKind: .unknown,
+            displayMetadata: metadata,
+            resolve: {
+                let url = try await StremioDebridMagnetResolver.resolveHTTPURL(
+                    infoHash: infoHash,
+                    fileIdx: fileIdx,
+                    service: service,
+                    token: token,
+                    client: client
+                )
+                if let bingeGroup {
+                    StremioBingeContinuityStore.remember(
+                        group: bingeGroup,
+                        forShowID: showID,
+                        addonID: addonID
+                    )
+                }
+                return PlaybackSource(url: url, headers: [:], subtitles: [], preferredPeakBitRate: nil)
+            }
+        )
+    }
+
+    private static func directUnrestrictEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: StremioDebridStore.directUnrestrictKey) == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: StremioDebridStore.directUnrestrictKey)
+    }
+
+    private static func preferredDebridCredentials() -> (service: StremioDebridService, token: String)? {
+        let preferredRaw = UserDefaults.standard.string(forKey: StremioDebridStore.preferredServiceKey)
+        let preferred = preferredRaw.flatMap(StremioDebridService.init(rawValue:)) ?? .realDebrid
+        let order = [preferred] + StremioDebridService.allCases.filter { $0 != preferred }
+        for service in order {
+            if let token = loadToken(service: service), !token.isEmpty {
+                return (service, token)
+            }
+        }
+        return nil
+    }
+
+    private static func loadToken(service: StremioDebridService) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.betterstreamflix.ios.stremio.debrid",
+            kSecAttrAccount as String: "debrid.\(service.rawValue)",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess,
+              let data = item as? Data,
+              let value = String(data: data, encoding: .utf8) else { return nil }
+        return value
     }
 
     private static func isDebridConfigured() -> Bool {
