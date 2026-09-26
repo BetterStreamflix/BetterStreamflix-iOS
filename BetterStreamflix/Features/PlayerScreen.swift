@@ -1250,6 +1250,7 @@ struct PlayerScreen: View {
     @State private var sourceSwitchRequestID = UUID()
     @State private var pendingEpisodeLoad: PendingEpisodeLoad?
     @State private var episodeLoadTask: Task<Void, Never>?
+    @State private var showSourceFilters = false
 
     init(request: PlaybackRequest, nextRequest: PlaybackRequest?) {
         _model = StateObject(wrappedValue: PlayerViewModel(request: request))
@@ -1264,7 +1265,7 @@ struct PlayerScreen: View {
             playbackErrorMessage: session.playbackErrorMessage ?? (model.source == nil ? model.errorMessage : nil),
             availableQualities: session.availableQualities,
             selectedQuality: session.selectedQuality,
-            streams: model.streams,
+            streams: model.activeFilteredStreams,
             selectedSourceID: model.selectedSourceID,
             automaticSource: model.rememberedSource == nil,
             isSearchingForSources: model.isSearching,
@@ -1461,6 +1462,9 @@ struct PlayerScreen: View {
                     await session.refreshSubtitlePickerEntries()
                     showSubtitlePicker = true
                 }
+            },
+            onOpenSourcePicker: {
+                showSourceFilters = true
             },
             onRetryPlayback: {
                 model.resetRecovery()
@@ -1758,6 +1762,20 @@ struct PlayerScreen: View {
             .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $showSourceFilters) {
+            StremioSourceFilterSheet(
+                cachedOnly: $model.sourceFilterCachedOnly,
+                minQualityHeight: $model.sourceFilterMinHeight,
+                selectedAddonID: $model.sourceFilterAddonID,
+                sortMode: $model.sourceFilterSortMode,
+                addonNames: model.stremioAddonFilterOptions,
+                matchCount: model.filteredStreams.count,
+                totalCount: model.streams.count,
+                onReset: { model.resetSourceFilters() },
+                onApply: { showSourceFilters = false }
+            )
+            .preferredColorScheme(.dark)
+        }
         .onChange(of: model.subtitleRevision) { _, _ in
             Task { await session.refreshSubtitlePickerEntries() }
         }
@@ -1776,6 +1794,31 @@ struct PlayerScreen: View {
                         isSearching: true
                     )
                     .padding(.top, ScreenMetrics.topSafeAreaInset + 56)
+                }
+                if model.source != nil, !model.streams.isEmpty {
+                    HStack(spacing: 8) {
+                        if let group = model.stremioDiagnostics.continuingBingeGroup {
+                            Text("Continuing \(group)")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
+                        Button {
+                            showSourceFilters = true
+                        } label: {
+                            Label(
+                                model.hasActiveSourceFilters ? "Filters · on" : "Filters",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 8)
                 }
             }
         }

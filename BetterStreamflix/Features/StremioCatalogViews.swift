@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StremioCatalogHubView: View {
     @EnvironmentObject private var environment: AppEnvironment
+    @EnvironmentObject private var library: LibraryStore
     @ObservedObject private var store = StremioAddonStore.shared
     @ObservedObject private var debrid = StremioDebridStore.shared
     @StateObject private var model = StremioCatalogHubModel()
@@ -9,9 +10,18 @@ struct StremioCatalogHubView: View {
     @State private var searchDraft = ""
     @State private var isSearching = false
     @State private var typeFilter: String? = nil
+    @State private var resumePlayback: PlaybackRequest?
     @FocusState private var searchFocused: Bool
 
     private let typeTabs = ["movie", "series", "anime", "channel"]
+
+    private var recentItems: [MediaItem] {
+        StremioRecentPlaybackStore.asMediaItems()
+    }
+
+    private var recentProgress: [WatchProgress] {
+        recentItems.compactMap { library.latestProgress(for: $0) }
+    }
 
     var body: some View {
         ScrollView {
@@ -20,6 +30,21 @@ struct StremioCatalogHubView: View {
 
                 introCard
                     .padding(.horizontal, 20)
+
+                if !recentItems.isEmpty {
+                    MediaShelfView(
+                        title: "Recently played via Stremio",
+                        items: recentItems,
+                        progress: recentProgress,
+                        onDetails: { selectedItem = $0 },
+                        onResume: { progress in
+                            resumePlayback = PlaybackRequest(
+                                media: progress.media,
+                                episode: progress.episode
+                            )
+                        }
+                    )
+                }
 
                 searchCard
                     .padding(.horizontal, 20)
@@ -118,6 +143,9 @@ struct StremioCatalogHubView: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedItem) { item in
             DetailsView(item: item)
+        }
+        .fullScreenCover(item: $resumePlayback) { request in
+            PlayerScreen(request: request, nextRequest: nil)
         }
         .task(id: store.addons.map(\.id) + [model.selectedAddonID ?? "", model.selectedGenre ?? "", typeFilter ?? ""]) {
             await model.load(store: store, client: HTTPClient(), adultOK: debrid.adultCatalogsOptIn)
@@ -592,6 +620,10 @@ struct StremioHomeShelvesView: View {
                             .foregroundStyle(environment.theme.accentBright)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffectWithFallback(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.horizontal, 20)
 
                 ForEach(orderedShelves) { shelf in

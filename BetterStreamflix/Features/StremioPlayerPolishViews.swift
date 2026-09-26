@@ -86,7 +86,11 @@ struct StremioSourceFilterSheet: View {
     @Binding var cachedOnly: Bool
     @Binding var minQualityHeight: Int
     @Binding var selectedAddonID: String?
+    @Binding var sortMode: StremioSourceSortMode
     let addonNames: [(id: String, name: String)]
+    var matchCount: Int = 0
+    var totalCount: Int = 0
+    var onReset: () -> Void = {}
     var onApply: () -> Void
 
     var body: some View {
@@ -100,8 +104,15 @@ struct StremioSourceFilterSheet: View {
                         Text("1080p+").tag(1080)
                         Text("4K").tag(2160)
                     }
+                    Picker("Sort", selection: $sortMode) {
+                        ForEach(StremioSourceSortMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
                 } header: {
                     Text("Filters")
+                } footer: {
+                    Text("Showing \(matchCount) of \(totalCount) sources")
                 }
 
                 if !addonNames.isEmpty {
@@ -122,6 +133,10 @@ struct StremioSourceFilterSheet: View {
                         }
                     }
                 }
+
+                Section {
+                    Button("Reset filters", role: .destructive, action: onReset)
+                }
             }
             .navigationTitle("Source filters")
             .navigationBarTitleDisplayMode(.inline)
@@ -131,6 +146,6 @@ struct StremioSourceFilterSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 }

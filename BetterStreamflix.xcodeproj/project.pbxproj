@@ -13,6 +13,7 @@
 		C2D3E4F5061728394A5B6C7D /* StremioInstallPromptSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E4F5061728394A5B6C7D8E /* StremioInstallPromptSheet.swift */; };
 		E4F5061728394A5B6C7D8E9F /* StremioPlayerPolishViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5061728394A5B6C7D8E9F0A /* StremioPlayerPolishViews.swift */; };
 		061728394A5B6C7D8E9F0A1B /* StremioDebridMagnetResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1728394A5B6C7D8E9F0A1B2C /* StremioDebridMagnetResolver.swift */; };
+		28394A5B6C7D8E9F0A1B2C3D /* StremioStatusStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394A5B6C7D8E9F0A1B2C3D4E /* StremioStatusStripView.swift */; };
 		9611AC8F0A8E499283A47A97 /* StremioMetaEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7ABED2B456C4F8AB150D5FB /* StremioMetaEnricher.swift */; };
 		0702DEB1540E404F8F4B443B /* StremioAddonCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B0CC70E42D467897CB7A33 /* StremioAddonCache.swift */; };
 		14A0CEF8D152429CA755BEF5 /* StremioDebridStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19BF8DEB4EB54E1185550BE7 /* StremioDebridStore.swift */; };
@@ -107,6 +108,7 @@
 		D3E4F5061728394A5B6C7D8E /* StremioInstallPromptSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioInstallPromptSheet.swift; sourceTree = "<group>"; };
 		F5061728394A5B6C7D8E9F0A /* StremioPlayerPolishViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioPlayerPolishViews.swift; sourceTree = "<group>"; };
 		1728394A5B6C7D8E9F0A1B2C /* StremioDebridMagnetResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioDebridMagnetResolver.swift; sourceTree = "<group>"; };
+		394A5B6C7D8E9F0A1B2C3D4E /* StremioStatusStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioStatusStripView.swift; sourceTree = "<group>"; };
 		F7ABED2B456C4F8AB150D5FB /* StremioMetaEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioMetaEnricher.swift; sourceTree = "<group>"; };
 		28B0CC70E42D467897CB7A33 /* StremioAddonCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioAddonCache.swift; sourceTree = "<group>"; };
 		19BF8DEB4EB54E1185550BE7 /* StremioDebridStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StremioDebridStore.swift; sourceTree = "<group>"; };
@@ -323,6 +325,7 @@
 				B1C2D3E4F5061728394A5B6C /* StremioConfigureWebView.swift */,
 				D3E4F5061728394A5B6C7D8E /* StremioInstallPromptSheet.swift */,
 				F5061728394A5B6C7D8E9F0A /* StremioPlayerPolishViews.swift */,
+				394A5B6C7D8E9F0A1B2C3D4E /* StremioStatusStripView.swift */,
 				CA0DD84DBBE8CAED217FD2E5 /* ViewModels.swift */,
 			);
 			path = Features;
@@ -473,6 +476,7 @@
 				A1B2C3D4E5F60718293A4B5C /* StremioConfigureWebView.swift in Sources */,
 				C2D3E4F5061728394A5B6C7D /* StremioInstallPromptSheet.swift in Sources */,
 				E4F5061728394A5B6C7D8E9F /* StremioPlayerPolishViews.swift in Sources */,
+				28394A5B6C7D8E9F0A1B2C3D /* StremioStatusStripView.swift in Sources */,
 				061728394A5B6C7D8E9F0A1B /* StremioDebridMagnetResolver.swift in Sources */,
 				28127D9AD9574E78931EACEB /* StremioAddonStore.swift in Sources */,
 				9611AC8F0A8E499283A47A97 /* StremioMetaEnricher.swift in Sources */,

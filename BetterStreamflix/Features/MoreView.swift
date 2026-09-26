@@ -66,8 +66,19 @@ struct MoreView: View {
                         ) {
                             path.append(MoreRoute.stremioSettings)
                         }
+                        Divider().opacity(0.35)
+                        hubRow(
+                            title: "Debrid",
+                            subtitle: debridHubSubtitle,
+                            systemImage: "key.horizontal.fill"
+                        ) {
+                            path.append(MoreRoute.stremioDebrid)
+                        }
                     }
                     .padding(.horizontal, 20)
+
+                    StremioStatusStripView()
+                        .padding(.horizontal, 20)
 
                     if let languageConfirmation {
                         Text(languageConfirmation)
@@ -163,6 +174,8 @@ struct MoreView: View {
                     StremioCatalogHubView()
                 case .stremioSettings:
                     StremioAddonsSettingsView()
+                case .stremioDebrid:
+                    StremioDebridSettingsView()
                 }
             }
             .sheet(item: $updateCheckResult) { result in
@@ -306,7 +319,7 @@ struct MoreView: View {
 }
 
 private enum MoreRoute: Hashable {
-    case settings, library, stremioHub, stremioSettings
+    case settings, library, stremioHub, stremioSettings, stremioDebrid
 }
 
 private extension MoreView {
@@ -315,5 +328,13 @@ private extension MoreView {
         let count = store.enabledAddons.count
         if count == 0 { return "Community catalogs & streams" }
         return "\(count) plugins · catalogs & streams"
+    }
+
+    var debridHubSubtitle: String {
+        let debrid = StremioDebridStore.shared
+        if let profile = debrid.preferredProfile {
+            return "\(profile.service.title) · ready for HTTP streams"
+        }
+        return "Real-Debrid / AllDebrid / Premiumize / TorBox"
     }
 }

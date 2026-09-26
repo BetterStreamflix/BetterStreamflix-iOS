@@ -1,11 +1,11 @@
 # BetterStreamflix iOS 0.1.13
 
-Next-level Stremio + Debrid — validate, rebind, rank, and now resolve torrents through your Debrid API without in-app BitTorrent.
+Next-level Stremio + Debrid — validate, rebind, rank, filter, and resolve torrents through your Debrid API without in-app BitTorrent.
 
-- **Debrid live status:** Validate Real-Debrid / AllDebrid / Premiumize / TorBox with premium badges; **Rebind** stream addons in one tap; Fast Cached / Quality install profiles
-- **Direct magnet → HTTP:** When addons return torrents only, resolve via your Debrid API (RD/AD/PM/TorBox) into NativePlayer links — still no in-app BitTorrent
-- **Source command center:** Prefer `[RD+]` / cached, binge-group continuity, size soft-caps, Cached badges, per-addon resolve HUD while searching, Safari/YouTube empty actions
-- **Configure in-app:** WKWebView configure capture; root deep-link install sheet; ShareLink + export/import; session stream cache
-- **Addon Store 2.0:** Editor’s picks + remote community catalogs; AIOStreams + Torrentio ElfHosted mirror; update badges
-- **Discovery polish:** Hub type tabs; Home “Stremio · See all” + pin favorite catalogs; cast/trailer meta merge; smarter smoke tests; seed failure banners; cache clear
+- **Debrid live status:** Validate tokens with premium badges + days-left strip; **Rebind** stream addons; auto-rebind on token save and preferred-service change; Fast Cached / Quality install profiles; More hub Debrid + status strip
+- **Direct magnet → HTTP:** Resolve torrent-only results via Real-Debrid / AllDebrid / Premiumize / TorBox APIs into NativePlayer — still no in-app BitTorrent; hardened PM fileIdx, AD errors, TorBox poll
+- **Source command center:** Prefer `[RD+]` / cached / healthy seeders / BluRay over CAM; binge continuity chip; quality/cached/addon filters with sort + persist; Browse sources… in player menu; Cached badges; per-addon resolve HUD; Safari/YouTube empty actions
+- **Configure in-app:** WKWebView configure capture; root deep-link install sheet; ShareLink + export/import; token-free Stremio profile export; diagnostics copy; session stream cache
+- **Addon Store 2.0:** Editor’s picks + remote community catalogs; AIOStreams, Annatar, Jackettio, TorBox official, Torrentio ElfHosted mirror; update badges
+- **Discovery polish:** Hub type tabs + recently played with resume; Home glass “Stremio · See all” + pin favorites; cast/trailer meta; smarter smoke tests; seed failure banners
 - Version 0.1.13

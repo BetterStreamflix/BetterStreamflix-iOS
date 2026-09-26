@@ -544,7 +544,103 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var sourceRevision = 0
     @Published var errorMessage: String?
     @Published private(set) var stremioDiagnostics = StremioResolveDiagnostics()
+    @Published var sourceFilterCachedOnly: Bool = StremioSourceFilterPreferences.cachedOnly {
+        didSet { StremioSourceFilterPreferences.cachedOnly = sourceFilterCachedOnly }
+    }
+    @Published var sourceFilterMinHeight: Int = StremioSourceFilterPreferences.minHeight {
+        didSet { StremioSourceFilterPreferences.minHeight = sourceFilterMinHeight }
+    }
+    @Published var sourceFilterAddonID: String? = StremioSourceFilterPreferences.addonID {
+        didSet { StremioSourceFilterPreferences.addonID = sourceFilterAddonID }
+    }
+    @Published var sourceFilterSortMode: StremioSourceSortMode = StremioSourceFilterPreferences.sortMode {
+        didSet { StremioSourceFilterPreferences.sortMode = sourceFilterSortMode }
+    }
     @Published private(set) var request: PlaybackRequest
+
+    var hasActiveSourceFilters: Bool {
+        sourceFilterCachedOnly || sourceFilterMinHeight > 0 || sourceFilterAddonID != nil
+    }
+
+    var filteredStreams: [PlayableStream] {
+        let filtered = streams.filter { stream in
+            let meta = stream.candidate.displayMetadata
+            if sourceFilterCachedOnly, meta?.isDebridCached != true {
+                return false
+            }
+            if sourceFilterMinHeight > 0 {
+                let height = Self.qualityHeight(from: meta?.quality)
+                if height < sourceFilterMinHeight { return false }
+            }
+            if let addonID = sourceFilterAddonID,
+               meta?.addonID != addonID,
+               !(meta?.addonName?.localizedCaseInsensitiveContains(addonID) ?? false) {
+                return false
+            }
+            return true
+        }
+        return Self.sortStreams(filtered, mode: sourceFilterSortMode)
+    }
+
+    /// Streams passed to NativePlayer — respects filters even when the result set is empty.
+    var activeFilteredStreams: [PlayableStream] {
+        hasActiveSourceFilters || sourceFilterSortMode != .bestMatch ? filteredStreams : streams
+    }
+
+    var stremioAddonFilterOptions: [(id: String, name: String)] {
+        var seen = Set<String>()
+        var options: [(id: String, name: String)] = []
+        for stream in streams {
+            guard let id = stream.candidate.displayMetadata?.addonID,
+                  let name = stream.candidate.displayMetadata?.addonName,
+                  seen.insert(id).inserted else { continue }
+            options.append((id, name))
+        }
+        return options.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    func resetSourceFilters() {
+        sourceFilterCachedOnly = false
+        sourceFilterMinHeight = 0
+        sourceFilterAddonID = nil
+        sourceFilterSortMode = .bestMatch
+    }
+
+    private static func qualityHeight(from raw: String?) -> Int {
+        guard let raw else { return 0 }
+        let lower = raw.lowercased()
+        if lower.contains("2160") || lower.contains("4k") { return 2160 }
+        if lower.contains("1080") { return 1080 }
+        if lower.contains("720") { return 720 }
+        if lower.contains("480") { return 480 }
+        return 0
+    }
+
+    private static func sortStreams(_ streams: [PlayableStream], mode: StremioSourceSortMode) -> [PlayableStream] {
+        switch mode {
+        case .bestMatch:
+            return streams
+        case .quality:
+            return streams.sorted {
+                qualityHeight(from: $0.candidate.displayMetadata?.quality)
+                    > qualityHeight(from: $1.candidate.displayMetadata?.quality)
+            }
+        case .size:
+            return streams.sorted {
+                ($0.candidate.displayMetadata?.sizeBytes ?? 0) > ($1.candidate.displayMetadata?.sizeBytes ?? 0)
+            }
+        case .seeders:
+            return streams.sorted {
+                ($0.candidate.displayMetadata?.seedersHint ?? 0) > ($1.candidate.displayMetadata?.seedersHint ?? 0)
+            }
+        case .cached:
+            return streams.sorted {
+                let a = $0.candidate.displayMetadata?.isDebridCached == true ? 0 : 1
+                let b = $1.candidate.displayMetadata?.isDebridCached == true ? 0 : 1
+                return a < b
+            }
+        }
+    }
     private let discovery = PlaybackDiscovery()
     private var contextTask: Task<PlaybackLookupContext, Never>?
     private var failedSources: Set<String> = []
@@ -599,6 +695,7 @@ final class PlayerViewModel: ObservableObject {
             qualityHeight: qualityHeight
         )
         nextPolicy.preferDebridCached = debridPrefs.preferCachedDebridLinks
+        nextPolicy.preferHealthySeeders = debridPrefs.preferHealthySeeders
         nextPolicy.preferredBingeGroup = binge
         if debridPrefs.maxPreferredSizeGB > 0 {
             nextPolicy.maxPreferredSizeBytes = Int64(debridPrefs.maxPreferredSizeGB) * 1_000_000_000
@@ -645,6 +742,7 @@ final class PlayerViewModel: ObservableObject {
             source = selected.source
             selectedSourceID = selected.id
             sourceRevision &+= 1
+            StremioRecentPlaybackStore.remember(request: playbackRequest)
             PlaybackStartupTrace.mark(
                 "SUBTITLE PERF video source PUBLISHED content=\(playbackRequest.contentID)"
             )

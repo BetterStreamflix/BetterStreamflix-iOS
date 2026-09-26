@@ -22,6 +22,7 @@ enum StremioDebridMagnetResolver {
         case .realDebrid:
             return try await realDebridUnrestrict(
                 magnet: magnet,
+                infoHash: cleanedHash,
                 fileIdx: fileIdx,
                 token: token,
                 client: client
@@ -43,6 +44,7 @@ enum StremioDebridMagnetResolver {
         case .premiumize:
             return try await premiumizeUnrestrict(
                 magnet: magnet,
+                fileIdx: fileIdx,
                 token: token,
                 client: client
             )
@@ -53,11 +55,21 @@ enum StremioDebridMagnetResolver {
 
     private static func realDebridUnrestrict(
         magnet: String,
+        infoHash: String,
         fileIdx: Int?,
         token: String,
         client: any HTTPClientProtocol
     ) async throws -> URL {
-        // 1) Add magnet
+        // Instant-availability preflight (best-effort) — still addMagnet when needed.
+        if let instant = try? await realDebridInstantLink(
+            infoHash: infoHash,
+            fileIdx: fileIdx,
+            token: token,
+            client: client
+        ) {
+            return instant
+        }
+
         var add = URLRequest(url: URL(string: "https://api.real-debrid.com/rest/1.0/torrents/addMagnet")!)
         add.httpMethod = "POST"
         add.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -69,7 +81,6 @@ enum StremioDebridMagnetResolver {
             throw AppError.providerUnavailable("Real-Debrid did not accept the magnet")
         }
 
-        // 2) Select files
         var select = URLRequest(
             url: URL(string: "https://api.real-debrid.com/rest/1.0/torrents/selectFiles/\(torrentID)")!
         )
@@ -85,17 +96,17 @@ enum StremioDebridMagnetResolver {
         select.httpBody = "files=\(filesValue)".data(using: .utf8)
         _ = try? await client.data(for: select)
 
-        // 3) Poll info for links
         var link: String?
-        for _ in 0..<8 {
+        for _ in 0..<10 {
             var infoReq = URLRequest(
                 url: URL(string: "https://api.real-debrid.com/rest/1.0/torrents/info/\(torrentID)")!
             )
             infoReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             let info = try await json(client.data(for: infoReq).data)
             let status = (info["status"] as? String)?.lowercased() ?? ""
-            if let links = info["links"] as? [String], let first = links.first {
-                link = first
+            if let links = info["links"] as? [String], !links.isEmpty {
+                let idx = min(max(fileIdx ?? 0, 0), links.count - 1)
+                link = links[idx]
                 break
             }
             if ["error", "virus", "dead"].contains(status) {
@@ -104,10 +115,35 @@ enum StremioDebridMagnetResolver {
             try await Task.sleep(for: .milliseconds(700))
         }
         guard let link else {
-            throw AppError.providerUnavailable("Real-Debrid is still downloading — try again shortly")
+            throw AppError.providerUnavailable("Real-Debrid is still downloading — try a cached source")
         }
+        return try await realDebridUnrestrictLink(link, token: token, client: client)
+    }
 
-        // 4) Unrestrict link
+    private static func realDebridInstantLink(
+        infoHash: String,
+        fileIdx: Int?,
+        token: String,
+        client: any HTTPClientProtocol
+    ) async throws -> URL? {
+        var req = URLRequest(
+            url: URL(string: "https://api.real-debrid.com/rest/1.0/torrents/instantAvailability/\(infoHash)")!
+        )
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let payload = try await json(client.data(for: req).data)
+        // Presence of any hoster map means the hash is cached somewhere — fall through to addMagnet
+        // which typically resolves immediately. Returning nil keeps the normal path.
+        guard payload[infoHash] != nil || payload[infoHash.lowercased()] != nil else {
+            return nil
+        }
+        return nil
+    }
+
+    private static func realDebridUnrestrictLink(
+        _ link: String,
+        token: String,
+        client: any HTTPClientProtocol
+    ) async throws -> URL {
         var unrestrict = URLRequest(url: URL(string: "https://api.real-debrid.com/rest/1.0/unrestrict/link")!)
         unrestrict.httpMethod = "POST"
         unrestrict.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -136,6 +172,11 @@ enum StremioDebridMagnetResolver {
             string: "https://api.alldebrid.com/v4/magnet/upload?agent=BetterStreamflix&apikey=\(encodedToken)&magnets[]=\(encodedMagnet)"
         )!
         let upload = try await json(client.data(for: URLRequest(url: uploadURL)).data)
+        if let status = (upload["status"] as? String)?.lowercased(), status == "error" {
+            let message = (upload["error"] as? [String: Any])?["message"] as? String
+                ?? "AllDebrid magnet upload failed"
+            throw AppError.providerUnavailable(message)
+        }
         let data = upload["data"] as? [String: Any]
         let magnets = data?["magnets"] as? [[String: Any]]
         guard let magnetID = magnets?.first?["id"] as? Int
@@ -146,19 +187,34 @@ enum StremioDebridMagnetResolver {
             string: "https://api.alldebrid.com/v4/magnet/status?agent=BetterStreamflix&apikey=\(encodedToken)&id=\(magnetID)"
         )!
         var link: String?
-        for _ in 0..<8 {
+        for _ in 0..<10 {
             let status = try await json(client.data(for: URLRequest(url: statusURL)).data)
+            if let apiStatus = (status["status"] as? String)?.lowercased(), apiStatus == "error" {
+                let message = (status["error"] as? [String: Any])?["message"] as? String
+                    ?? "AllDebrid magnet failed"
+                throw AppError.providerUnavailable(message)
+            }
             let magnetObj = (status["data"] as? [String: Any])?["magnets"] as? [String: Any]
                 ?? status["data"] as? [String: Any]
-            if let links = magnetObj?["links"] as? [[String: Any]] {
-                let idx = min(max(fileIdx ?? 0, 0), max(links.count - 1, 0))
+            let magnetStatus = ((magnetObj?["status"] as? String)
+                ?? (magnetObj?["statusCode"] as? Int).map(String.init)
+                ?? "").lowercased()
+            if ["error", "magnet_error", "file_7"].contains(magnetStatus)
+                || magnetStatus.contains("error") {
+                throw AppError.providerUnavailable("AllDebrid magnet \(magnetStatus)")
+            }
+            if let links = magnetObj?["links"] as? [[String: Any]], !links.isEmpty {
+                let idx = min(max(fileIdx ?? 0, 0), links.count - 1)
                 link = links[idx]["link"] as? String
                 if link != nil { break }
+            }
+            if ["ready", "cached"].contains(magnetStatus), link == nil {
+                // Keep polling briefly for link materialization.
             }
             try await Task.sleep(for: .milliseconds(700))
         }
         guard let link else {
-            throw AppError.providerUnavailable("AllDebrid is still processing the magnet")
+            throw AppError.providerUnavailable("AllDebrid is still processing — try a cached source")
         }
         let unlockURL = URL(
             string: "https://api.alldebrid.com/v4/link/unlock?agent=BetterStreamflix&apikey=\(encodedToken)&link=\(link.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? link)"
@@ -195,6 +251,33 @@ enum StremioDebridMagnetResolver {
             ?? (data?["torrent_id"] as? String).flatMap(Int.init) else {
             throw AppError.providerUnavailable("TorBox create failed")
         }
+
+        // Poll briefly until the torrent is downloadable.
+        for _ in 0..<8 {
+            var infoReq = URLRequest(
+                url: URL(string: "https://api.torbox.app/v1/api/torrents/mylist?id=\(torrentID)")!
+            )
+            infoReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let info = try? await json(client.data(for: infoReq).data) {
+                let row = (info["data"] as? [[String: Any]])?.first
+                    ?? info["data"] as? [String: Any]
+                let downloadState = (row?["download_state"] as? String)?.lowercased()
+                    ?? (row?["downloadState"] as? String)?.lowercased()
+                    ?? ""
+                let progress = (row?["progress"] as? Double) ?? (row?["progress"] as? Int).map(Double.init) ?? 0
+                if downloadState.contains("failed") || downloadState.contains("error") {
+                    throw AppError.providerUnavailable("TorBox torrent \(downloadState)")
+                }
+                if downloadState.contains("cached")
+                    || downloadState.contains("completed")
+                    || downloadState.contains("ready")
+                    || progress >= 1 {
+                    break
+                }
+            }
+            try await Task.sleep(for: .milliseconds(600))
+        }
+
         var reqLink = URLRequest(
             url: URL(
                 string: "https://api.torbox.app/v1/api/torrents/requestdl?token=\(token)&torrent_id=\(torrentID)&file_id=\(fileIdx ?? 0)&redirect=false"
@@ -209,13 +292,14 @@ enum StremioDebridMagnetResolver {
            let url = URL(string: download) {
             return url
         }
-        throw AppError.providerUnavailable("TorBox download link unavailable")
+        throw AppError.providerUnavailable("TorBox download link unavailable — try a cached source")
     }
 
     // MARK: - Premiumize
 
     private static func premiumizeUnrestrict(
         magnet: String,
+        fileIdx: Int?,
         token: String,
         client: any HTTPClientProtocol
     ) async throws -> URL {
@@ -228,15 +312,37 @@ enum StremioDebridMagnetResolver {
         request.httpBody = "src=\(magnet.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? magnet)"
             .data(using: .utf8)
         let json = try await json(client.data(for: request).data)
-        if let content = json["content"] as? [[String: Any]],
-           let link = content.first?["link"] as? String,
-           let url = URL(string: link) {
-            return url
+        if let content = json["content"] as? [[String: Any]], !content.isEmpty {
+            let idx = min(max(fileIdx ?? preferredVideoIndex(in: content), 0), content.count - 1)
+            if let link = content[idx]["link"] as? String, let url = URL(string: link) {
+                return url
+            }
+            if let link = content[idx]["stream_link"] as? String, let url = URL(string: link) {
+                return url
+            }
         }
         if let location = json["location"] as? String, let url = URL(string: location) {
             return url
         }
         throw AppError.providerUnavailable("Premiumize directdl failed")
+    }
+
+    private static func preferredVideoIndex(in content: [[String: Any]]) -> Int {
+        let videoExt = ["mkv", "mp4", "avi", "m4v", "mov", "ts", "m2ts"]
+        var bestIndex = 0
+        var bestSize: Int64 = -1
+        for (index, item) in content.enumerated() {
+            let path = ((item["path"] as? String) ?? (item["name"] as? String) ?? "").lowercased()
+            let size = (item["size"] as? Int64)
+                ?? (item["size"] as? Int).map(Int64.init)
+                ?? 0
+            let looksVideo = videoExt.contains { path.hasSuffix(".\($0)") } || path.contains(".")
+            if looksVideo, size >= bestSize {
+                bestSize = size
+                bestIndex = index
+            }
+        }
+        return bestIndex
     }
 
     private static func json(_ data: Data) throws -> [String: Any] {
@@ -303,5 +409,160 @@ enum StremioFavoriteCatalogsStore {
             set.insert(id)
         }
         favorites = set
+    }
+}
+
+/// Persisted player source-filter defaults.
+enum StremioSourceSortMode: String, CaseIterable, Identifiable, Codable {
+    case bestMatch
+    case quality
+    case size
+    case seeders
+    case cached
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .bestMatch: "Best match"
+        case .quality: "Quality"
+        case .size: "Size"
+        case .seeders: "Seeders"
+        case .cached: "Cached first"
+        }
+    }
+}
+
+enum StremioSourceFilterPreferences {
+    private static let cachedKey = "stremio.sourceFilter.cachedOnly.v1"
+    private static let heightKey = "stremio.sourceFilter.minHeight.v1"
+    private static let addonKey = "stremio.sourceFilter.addonID.v1"
+    private static let sortKey = "stremio.sourceFilter.sortMode.v1"
+
+    static var cachedOnly: Bool {
+        get { UserDefaults.standard.bool(forKey: cachedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: cachedKey) }
+    }
+
+    static var minHeight: Int {
+        get { UserDefaults.standard.integer(forKey: heightKey) }
+        set { UserDefaults.standard.set(max(0, newValue), forKey: heightKey) }
+    }
+
+    static var addonID: String? {
+        get {
+            let value = UserDefaults.standard.string(forKey: addonKey)
+            return (value?.isEmpty == false) ? value : nil
+        }
+        set { UserDefaults.standard.set(newValue, forKey: addonKey) }
+    }
+
+    static var sortMode: StremioSourceSortMode {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: sortKey),
+               let mode = StremioSourceSortMode(rawValue: raw) {
+                return mode
+            }
+            return .bestMatch
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: sortKey) }
+    }
+}
+
+/// Token-free Stremio profile prefs for share / import (addons + ranking, never Keychain tokens).
+enum StremioProfileExport {
+    struct Payload: Codable {
+        var preferredService: String?
+        var preferCached: Bool?
+        var preferHealthySeeders: Bool?
+        var maxSizeGB: Int?
+        var streamTimeout: Double?
+        var maxParallel: Int?
+        var adultOptIn: Bool?
+        var installCachedOnly: Bool?
+        var sourceFilterCachedOnly: Bool?
+        var sourceFilterMinHeight: Int?
+        var sourceFilterSort: String?
+        var favoriteCatalogIDs: [String]?
+        var addonManifestURLs: [String]?
+    }
+
+    static func exportJSON(
+        debrid: StremioDebridStore = .shared,
+        store: StremioAddonStore = .shared
+    ) throws -> Data {
+        let payload = Payload(
+            preferredService: debrid.preferredService.rawValue,
+            preferCached: debrid.preferCachedDebridLinks,
+            preferHealthySeeders: debrid.preferHealthySeeders,
+            maxSizeGB: debrid.maxPreferredSizeGB,
+            streamTimeout: debrid.streamQueryTimeout,
+            maxParallel: debrid.maxParallelStreamQueries,
+            adultOptIn: debrid.adultCatalogsOptIn,
+            installCachedOnly: debrid.installCachedOnly,
+            sourceFilterCachedOnly: StremioSourceFilterPreferences.cachedOnly,
+            sourceFilterMinHeight: StremioSourceFilterPreferences.minHeight,
+            sourceFilterSort: StremioSourceFilterPreferences.sortMode.rawValue,
+            favoriteCatalogIDs: Array(StremioFavoriteCatalogsStore.favorites).sorted(),
+            addonManifestURLs: store.addons.map(\.manifestURL.absoluteString)
+        )
+        return try JSONEncoder().encode(payload)
+    }
+
+    @MainActor
+    static func importJSON(
+        _ data: Data,
+        debrid: StremioDebridStore = .shared,
+        store: StremioAddonStore = .shared
+    ) async throws -> Int {
+        let payload = try JSONDecoder().decode(Payload.self, from: data)
+        if let raw = payload.preferredService,
+           let service = StremioDebridService(rawValue: raw) {
+            debrid.preferredService = service
+        }
+        if let preferCached = payload.preferCached {
+            debrid.preferCachedDebridLinks = preferCached
+        }
+        if let preferSeeders = payload.preferHealthySeeders {
+            debrid.preferHealthySeeders = preferSeeders
+        }
+        if let maxSize = payload.maxSizeGB {
+            debrid.maxPreferredSizeGB = maxSize
+        }
+        if let timeout = payload.streamTimeout {
+            debrid.streamQueryTimeout = timeout
+        }
+        if let parallel = payload.maxParallel {
+            debrid.maxParallelStreamQueries = parallel
+        }
+        if let adult = payload.adultOptIn {
+            debrid.adultCatalogsOptIn = adult
+        }
+        if let cachedOnly = payload.installCachedOnly {
+            debrid.installCachedOnly = cachedOnly
+        }
+        if let cached = payload.sourceFilterCachedOnly {
+            StremioSourceFilterPreferences.cachedOnly = cached
+        }
+        if let height = payload.sourceFilterMinHeight {
+            StremioSourceFilterPreferences.minHeight = height
+        }
+        if let sort = payload.sourceFilterSort,
+           let mode = StremioSourceSortMode(rawValue: sort) {
+            StremioSourceFilterPreferences.sortMode = mode
+        }
+        if let favorites = payload.favoriteCatalogIDs {
+            StremioFavoriteCatalogsStore.favorites = Set(favorites)
+        }
+        var installed = 0
+        for url in payload.addonManifestURLs ?? [] {
+            do {
+                _ = try await store.install(from: url, curated: false)
+                installed += 1
+            } catch {
+                continue
+            }
+        }
+        return installed
     }
 }

@@ -271,6 +271,55 @@ struct StremioAddonProviderTests {
         #expect(!manifest.accepts(resource: "stream", type: "movie", id: "tmdb:603"))
     }
 
+    @Test("TorBox official addon builds key-in-path manifest URL")
+    func torboxInstallURL() {
+        let base = URL(string: "https://stremio.torbox.app/manifest.json")!
+        let url = StremioDebridURLBuilder.configuredManifestURL(
+            for: "com.torbox.stremio",
+            service: .torbox,
+            token: "TBKEY",
+            baseManifestURL: base
+        )
+        #expect(url?.absoluteString == "https://stremio.torbox.app/TBKEY/manifest.json")
+        #expect(StremioCuratedCatalog.popularPresets.contains {
+            StremioCuratedCatalog.isDebridStreamPreset($0) && $0.name == "TorBox"
+        })
+        #expect(StremioDebridURLBuilder.looksConfigured(
+            URL(string: "https://stremio.torbox.app/TBKEY/manifest.json")!
+        ))
+    }
+
+    @Test("Stream selection prefers healthy seeders and avoids CAM")
+    func seederAndReleaseRanking() {
+        let cam = PlayableStream(
+            candidate: PlaybackCandidate(
+                id: "cam",
+                preference: .init(providerID: "external-streams", serverName: "cam", audioLanguage: "en"),
+                providerName: "CAM",
+                subtitleKind: .unknown,
+                displayMetadata: StreamDisplayMetadata(origin: "CAM", releaseType: "CAM", seedersHint: 2),
+                resolve: { PlaybackSource(url: URL(string: "https://a.example/cam.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil) }
+            ),
+            source: PlaybackSource(url: URL(string: "https://a.example/cam.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil),
+            qualities: []
+        )
+        let web = PlayableStream(
+            candidate: PlaybackCandidate(
+                id: "web",
+                preference: .init(providerID: "external-streams", serverName: "web", audioLanguage: "en"),
+                providerName: "WEB",
+                subtitleKind: .unknown,
+                displayMetadata: StreamDisplayMetadata(origin: "WEB", releaseType: "WEB-DL", seedersHint: 80),
+                resolve: { PlaybackSource(url: URL(string: "https://a.example/web.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil) }
+            ),
+            source: PlaybackSource(url: URL(string: "https://a.example/web.mp4")!, headers: [:], subtitles: [], preferredPeakBitRate: nil),
+            qualities: []
+        )
+        var policy = StreamSelectionPolicy()
+        policy.preferHealthySeeders = true
+        #expect(policy.best(in: [cam, web])?.id == "web")
+    }
+
     @Test("Debrid stream presets are flagged for one-tap install")
     func debridPresetFlags() {
         #expect(StremioCuratedCatalog.popularPresets.contains {

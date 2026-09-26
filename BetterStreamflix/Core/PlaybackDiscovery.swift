@@ -96,6 +96,9 @@ struct PlayableStream: Identifiable, Sendable {
             var details = [metadata.origin]
             if metadata.isDebridCached == true { details.append("Cached") }
             if let quality = metadata.quality { details.append(quality) }
+            if let seeders = metadata.seedersHint, seeders > 0 {
+                details.append("\(seeders) seeders")
+            }
             if let size = metadata.sizeBytes {
                 details.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
             } else if let container = metadata.container { details.append(container) }
@@ -165,6 +168,8 @@ struct StreamSelectionPolicy: Sendable {
     var preferredBingeGroup: String? = nil
     /// Soft cap in bytes; oversized REMUXes rank worse unless quality demands them.
     var maxPreferredSizeBytes: Int64? = nil
+    /// Soft-boost healthier seeder counts when present.
+    var preferHealthySeeders: Bool = true
 
     func best(in streams: [PlayableStream]) -> PlayableStream? {
         streams.enumerated().min { score($0.element, order: $0.offset).lexicographicallyPrecedes(score($1.element, order: $1.offset)) }?.element
@@ -202,16 +207,44 @@ struct StreamSelectionPolicy: Sendable {
         } else {
             sizeRank = 0
         }
+        let releaseRank = Self.releaseRank(metadata?.releaseType)
+        let seederRank: Int
+        if preferHealthySeeders, let seeders = metadata?.seedersHint {
+            // Lower is better: bucket high seeder counts first.
+            if seeders >= 100 { seederRank = 0 }
+            else if seeders >= 20 { seederRank = 1 }
+            else if seeders >= 5 { seederRank = 2 }
+            else { seederRank = 3 }
+        } else {
+            seederRank = 0
+        }
         return [
             preference == candidate.preference ? 0 : 1,
             cachedRank,
             bingeRank,
+            releaseRank,
             audioRank,
             candidate.subtitleKind == .embeddedEnglish ? 2 : candidate.subtitleKind == .unknown ? 1 : 0,
             sizeRank,
+            seederRank,
             qualityRank,
             order,
         ]
+    }
+
+    private static func releaseRank(_ raw: String?) -> Int {
+        guard let raw else { return 2 }
+        let lower = raw.lowercased()
+        if lower.contains("cam") || lower.contains("ts") || lower.contains("telesync") || lower.contains("scr") {
+            return 4
+        }
+        if lower.contains("bluray") || lower.contains("blu-ray") || lower.contains("remux") {
+            return 0
+        }
+        if lower.contains("web-dl") || lower.contains("webdl") || lower.contains("webrip") || lower.contains("web") {
+            return 1
+        }
+        return 2
     }
 }
 

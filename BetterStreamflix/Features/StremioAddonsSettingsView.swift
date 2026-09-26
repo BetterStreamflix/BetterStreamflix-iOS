@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 /// Full Stremio plugin manager — Liquid Glass, Debrid-aware presets, logos, config flow.
 struct StremioAddonsSettingsView: View {
@@ -14,7 +15,9 @@ struct StremioAddonsSettingsView: View {
     @State private var presetFilter: StremioAddonKind? = nil
     @State private var showExporter = false
     @State private var showImporter = false
+    @State private var showProfileImporter = false
     @State private var exportDocument: StremioAddonListDocument?
+    @State private var exportFilename = "betterstreamflix-stremio-addons.json"
     @State private var configureURL: URL?
     @FocusState private var installFocused: Bool
 
@@ -102,10 +105,13 @@ struct StremioAddonsSettingsView: View {
             isPresented: $showExporter,
             document: exportDocument,
             contentType: .json,
-            defaultFilename: "betterstreamflix-stremio-addons.json"
+            defaultFilename: exportFilename
         ) { _ in }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
             Task { await importList(result) }
+        }
+        .fileImporter(isPresented: $showProfileImporter, allowedContentTypes: [.json]) { result in
+            Task { await importProfile(result) }
         }
     }
 
@@ -304,6 +310,7 @@ struct StremioAddonsSettingsView: View {
         Section {
             Button {
                 if let data = try? store.exportAddonListJSON() {
+                    exportFilename = "betterstreamflix-stremio-addons.json"
                     exportDocument = StremioAddonListDocument(data: data)
                     showExporter = true
                 }
@@ -311,9 +318,23 @@ struct StremioAddonsSettingsView: View {
                 Label("Export addon list", systemImage: "square.and.arrow.up")
             }
             Button {
+                if let data = try? StremioProfileExport.exportJSON(debrid: debrid, store: store) {
+                    exportFilename = "betterstreamflix-stremio-profile.json"
+                    exportDocument = StremioAddonListDocument(data: data)
+                    showExporter = true
+                }
+            } label: {
+                Label("Export Stremio profile (no tokens)", systemImage: "person.crop.circle.badge.checkmark")
+            }
+            Button {
                 showImporter = true
             } label: {
                 Label("Import addon list", systemImage: "square.and.arrow.down")
+            }
+            Button {
+                showProfileImporter = true
+            } label: {
+                Label("Import Stremio profile", systemImage: "square.and.arrow.down.on.square")
             }
             if let first = store.streamAddons.first {
                 ShareLink(
@@ -331,10 +352,20 @@ struct StremioAddonsSettingsView: View {
                     banner = "Caches cleared"
                 }
             }
+            Button("Copy last resolve diagnostics") {
+                let diag = StremioResolveDiagnosticsStore.current()
+                let text = """
+                playable=\(diag.playableHTTP) torrents=\(diag.skippedTorrent) external=\(diag.skippedExternal) youtube=\(diag.skippedYouTube) failed=\(diag.failedAddons) queried=\(diag.queriedAddons) debrid=\(diag.debridConfigured)
+                \(diag.userFacingSummary)
+                \(diag.perAddon.map(\.chipTitle).joined(separator: " · "))
+                """
+                UIPasteboard.general.string = text
+                banner = "Diagnostics copied"
+            }
         } header: {
             Text("Backup & share")
         } footer: {
-            Text("Exports only Stremio plugin URLs (not Debrid tokens). Full app backup still includes preferences. Share copies a manifest URL for another device.")
+            Text("Addon lists and profiles never include Debrid tokens. Profiles carry ranking prefs, filters, favorites, and manifest URLs.")
         }
         .listRowBackground(AppTheme.surface)
     }
@@ -784,6 +815,22 @@ struct StremioAddonsSettingsView: View {
             banner = "Imported \(count) addon\(count == 1 ? "" : "s")"
         } catch {
             banner = "Import failed"
+        }
+    }
+
+    private func importProfile(_ result: Result<URL, Error>) async {
+        do {
+            let url = try result.get()
+            guard url.startAccessingSecurityScopedResource() else {
+                banner = "Couldn’t access import file"
+                return
+            }
+            defer { url.stopAccessingSecurityScopedResource() }
+            let data = try Data(contentsOf: url)
+            let count = try await StremioProfileExport.importJSON(data, debrid: debrid, store: store)
+            banner = "Profile imported · \(count) addon\(count == 1 ? "" : "s")"
+        } catch {
+            banner = "Profile import failed"
         }
     }
 }

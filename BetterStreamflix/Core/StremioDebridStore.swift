@@ -191,6 +191,11 @@ enum StremioDebridURLBuilder {
                 .appendingPathComponent("manifest.json")
         }
 
+        // TorBox official addon embeds the API key as a path segment.
+        if host.contains("torbox") || id.contains("torbox") {
+            return URL(string: "https://stremio.torbox.app/\(encoded)/manifest.json")
+        }
+
         let config = "\(service.torrentioSlug)=\(encoded)"
         return baseManifestURL
             .deletingLastPathComponent()
@@ -200,6 +205,10 @@ enum StremioDebridURLBuilder {
 
     static func looksConfigured(_ url: URL) -> Bool {
         let path = url.path.lowercased()
+        let host = (url.host ?? "").lowercased()
+        if host.contains("torbox.app"), path.split(separator: "/").count >= 2 {
+            return true
+        }
         let markers = ["realdebrid=", "alldebrid=", "premiumize=", "torbox=", "debrid"]
         return markers.contains { path.contains($0) }
     }
@@ -207,6 +216,10 @@ enum StremioDebridURLBuilder {
     /// Detect which debrid service a configured manifest URL is bound to.
     static func boundService(in url: URL) -> StremioDebridService? {
         let path = url.path.lowercased()
+        let host = (url.host ?? "").lowercased()
+        if host.contains("torbox.app"), path.split(separator: "/").count >= 2 {
+            return .torbox
+        }
         for service in StremioDebridService.allCases {
             if path.contains("\(service.torrentioSlug)=") { return service }
         }
@@ -412,6 +425,7 @@ final class StremioDebridStore: ObservableObject {
     nonisolated(unsafe) static let maxParallelKey = "stremio.stream.maxParallel.v1"
     static let preferCachedKey = "stremio.stream.preferCached.v1"
     static let maxSizeGBKey = "stremio.stream.maxPreferredSizeGB.v1"
+    static let preferSeedersKey = "stremio.stream.preferHealthySeeders.v1"
     static let installCachedOnlyKey = "stremio.debrid.install.cachedOnly.v1"
     static let installQualitiesKey = "stremio.debrid.install.qualities.v1"
     nonisolated(unsafe) static let directUnrestrictKey = "stremio.debrid.directUnrestrict.v1"
@@ -463,6 +477,18 @@ final class StremioDebridStore: ObservableObject {
         get { UserDefaults.standard.integer(forKey: Self.maxSizeGBKey) }
         set {
             UserDefaults.standard.set(max(0, min(100, newValue)), forKey: Self.maxSizeGBKey)
+            objectWillChange.send()
+        }
+    }
+
+    /// Soft-boost streams that advertise healthier seeder counts.
+    var preferHealthySeeders: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: Self.preferSeedersKey) == nil { return true }
+            return UserDefaults.standard.bool(forKey: Self.preferSeedersKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.preferSeedersKey)
             objectWillChange.send()
         }
     }

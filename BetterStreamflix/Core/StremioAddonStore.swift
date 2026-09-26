@@ -382,6 +382,36 @@ enum StremioCuratedCatalog {
                 isPopularOptional: true,
                 networkNote: "Mirror of Torrentio. Install with Debrid."
             ),
+            StremioCuratedAddon(
+                id: "com.stremio.annatar",
+                name: "Annatar",
+                blurb: "Debrid-friendly torrent stream aggregator. Pair with a saved Debrid token for HTTP playback.",
+                manifestURL: URL(string: "https://annatar.elfhosted.com/manifest.json")!,
+                capabilities: "Stream (Debrid)",
+                kind: .stream,
+                isPopularOptional: true,
+                networkNote: "Install with Debrid after saving a token."
+            ),
+            StremioCuratedAddon(
+                id: "community.stremio.torrentio.addon.prowlarr",
+                name: "Jackettio",
+                blurb: "Jackett/Prowlarr-backed torrent index. Needs Debrid for in-app HTTP — torrents alone never play on iOS.",
+                manifestURL: URL(string: "https://jackettio.elfhosted.com/manifest.json")!,
+                capabilities: "Stream (Debrid)",
+                kind: .stream,
+                isPopularOptional: true,
+                networkNote: "Public ElfHosted Jackettio instance. Prefer Install with Debrid."
+            ),
+            StremioCuratedAddon(
+                id: "com.torbox.stremio",
+                name: "TorBox",
+                blurb: "Official TorBox Stremio addon. Install with Debrid injects your TorBox API key into the manifest path.",
+                manifestURL: URL(string: "https://stremio.torbox.app/manifest.json")!,
+                capabilities: "Stream (Debrid)",
+                kind: .stream,
+                isPopularOptional: true,
+                networkNote: "Requires a TorBox token. Prefer Install with Debrid."
+            ),
         ]
     }
 
@@ -406,7 +436,7 @@ enum StremioCuratedCatalog {
     }
 
     static func isDebridStreamPreset(_ curated: StremioCuratedAddon) -> Bool {
-        ["torrentio", "comet", "mediafusion", "aiostreams"].contains {
+        ["torrentio", "comet", "mediafusion", "aiostreams", "annatar", "jackettio", "torbox"].contains {
             curated.id.lowercased().contains($0) || curated.name.lowercased().contains($0)
         }
     }
@@ -560,7 +590,7 @@ final class StremioAddonStore: ObservableObject {
         let targets = addons.filter { addon in
             addon.supportsStream && (
                 StremioDebridURLBuilder.looksConfigured(addon.manifestURL)
-                    || ["torrentio", "comet", "mediafusion", "aiostreams"].contains {
+                    || ["torrentio", "comet", "mediafusion", "aiostreams", "annatar", "jackettio", "torbox"].contains {
                         addon.id.lowercased().contains($0) || addon.name.lowercased().contains($0)
                     }
             )

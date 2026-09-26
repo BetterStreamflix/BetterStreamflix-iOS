@@ -3717,6 +3717,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
     let onAdjustSubtitleTiming: (Double) -> Void
     let onOpenSubtitleSync: () -> Void
     let onOpenSubtitlePicker: () -> Void
+    let onOpenSourcePicker: () -> Void
     let onRetryPlayback: () -> Void
     let onTryNextSource: () -> Void
     let onZoomChanged: (Bool) -> Void
@@ -3731,6 +3732,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onAdjustSubtitleTiming: onAdjustSubtitleTiming,
             onOpenSubtitleSync: onOpenSubtitleSync,
             onOpenSubtitlePicker: onOpenSubtitlePicker,
+            onOpenSourcePicker: onOpenSourcePicker,
             onRetryPlayback: onRetryPlayback,
             onTryNextSource: onTryNextSource,
             isZoomedToFill: isZoomedToFill,
@@ -3801,6 +3803,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
         private let onAdjustSubtitleTiming: (Double) -> Void
         private let onOpenSubtitleSync: () -> Void
         private let onOpenSubtitlePicker: () -> Void
+        private let onOpenSourcePicker: () -> Void
         private let onRetryPlayback: () -> Void
         private let onTryNextSource: () -> Void
         private let onWillDismiss: () -> Void
@@ -3849,6 +3852,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             onAdjustSubtitleTiming: @escaping (Double) -> Void,
             onOpenSubtitleSync: @escaping () -> Void,
             onOpenSubtitlePicker: @escaping () -> Void,
+            onOpenSourcePicker: @escaping () -> Void,
             onRetryPlayback: @escaping () -> Void,
             onTryNextSource: @escaping () -> Void,
             isZoomedToFill: Bool,
@@ -3862,6 +3866,7 @@ struct NativePlayerController: UIViewControllerRepresentable {
             self.onAdjustSubtitleTiming = onAdjustSubtitleTiming
             self.onOpenSubtitleSync = onOpenSubtitleSync
             self.onOpenSubtitlePicker = onOpenSubtitlePicker
+            self.onOpenSourcePicker = onOpenSourcePicker
             self.onRetryPlayback = onRetryPlayback
             self.onTryNextSource = onTryNextSource
             prefersZoomedToFill = isZoomedToFill
@@ -4261,6 +4266,13 @@ struct NativePlayerController: UIViewControllerRepresentable {
 
                 var sources: [UIMenuElement] = [
                     UIAction(
+                        title: "Browse sources…",
+                        subtitle: "Quality · cached · addon filters",
+                        image: UIImage(systemName: "line.3.horizontal.decrease.circle")
+                    ) { [weak self] _ in
+                        self?.onOpenSourcePicker()
+                    },
+                    UIAction(
                         title: "Automatic",
                         subtitle: automaticSubtitle,
                         image: UIImage(systemName: "wand.and.stars"),
@@ -4283,6 +4295,15 @@ struct NativePlayerController: UIViewControllerRepresentable {
 
                     if stream.candidate.displayMetadata?.isDebridCached == true {
                         metadata.append("Cached")
+                    }
+
+                    if let seeders = stream.candidate.displayMetadata?.seedersHint, seeders > 0 {
+                        metadata.append("\(seeders) seeders")
+                    }
+
+                    if let release = stream.candidate.displayMetadata?.releaseType,
+                       !release.isEmpty {
+                        metadata.append(release)
                     }
 
                     if let container = stream.candidate.displayMetadata?.container {

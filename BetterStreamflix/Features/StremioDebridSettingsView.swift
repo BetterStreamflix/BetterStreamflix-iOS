@@ -30,8 +30,22 @@ struct StremioDebridSettingsView: View {
                     }
                 }
                 .tint(environment.theme.accent)
-                .onChange(of: debrid.preferredService) { _, _ in
-                    banner = "Preferred service updated — tap Rebind to rewrite stream addons."
+                .onChange(of: debrid.preferredService) { _, service in
+                    banner = "Preferred → \(service.title)"
+                    guard debrid.hasAnyToken else { return }
+                    Task {
+                        isRebinding = true
+                        defer { isRebinding = false }
+                        do {
+                            await StremioStreamSessionCache.shared.clear()
+                            let count = try await store.rebindDebridProfiles(debrid: debrid)
+                            if count > 0 {
+                                banner = "Preferred \(service.title) · rebound \(count) addon\(count == 1 ? "" : "s")"
+                            }
+                        } catch {
+                            banner = "Preferred updated — tap Rebind if streams look stale"
+                        }
+                    }
                 }
 
                 ForEach(StremioDebridService.allCases) { service in
@@ -54,6 +68,19 @@ struct StremioDebridSettingsView: View {
                                 debrid.setToken(drafts[service] ?? "", for: service)
                                 banner = "\(service.title) token saved"
                                 DesignTokens.Haptics.primaryAction()
+                                Task {
+                                    _ = await debrid.validate(service: service)
+                                    if debrid.preferredService == service || debrid.preferredProfile?.service == service {
+                                        do {
+                                            let count = try await store.rebindDebridProfiles(debrid: debrid)
+                                            if count > 0 {
+                                                banner = "\(service.title) saved · rebound \(count) addon\(count == 1 ? "" : "s")"
+                                            }
+                                        } catch {
+                                            // Token saved; rebind optional.
+                                        }
+                                    }
+                                }
                             }
                             .font(.caption.weight(.semibold))
                             .disabled((drafts[service] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -114,6 +141,10 @@ struct StremioDebridSettingsView: View {
                     get: { debrid.preferCachedDebridLinks },
                     set: { debrid.preferCachedDebridLinks = $0 }
                 ))
+                Toggle("Prefer healthy seeders", isOn: Binding(
+                    get: { debrid.preferHealthySeeders },
+                    set: { debrid.preferHealthySeeders = $0 }
+                ))
                 Toggle("Direct magnet → HTTP via Debrid API", isOn: Binding(
                     get: { debrid.directMagnetUnrestrictEnabled },
                     set: { debrid.directMagnetUnrestrictEnabled = $0 }
@@ -130,7 +161,7 @@ struct StremioDebridSettingsView: View {
             } header: {
                 Text("Playback ranking")
             } footer: {
-                Text("Cached `[RD+]` links rank first. Direct magnet unrestrict uses your Debrid API when addons only return torrents — still no in-app BitTorrent.")
+                Text("Cached `[RD+]` and healthy seeders rank first. Direct magnet unrestrict uses your Debrid API when addons only return torrents — still no in-app BitTorrent.")
             }
             .listRowBackground(AppTheme.surface)
 
