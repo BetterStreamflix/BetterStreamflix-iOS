@@ -72,7 +72,8 @@ struct StremioPlaybackProvider: PlaybackProvider {
                 while inFlight < budget, let addon = iterator.next() {
                     if addon.requiresConfig,
                        let manifestURL = addon.manifestURL,
-                       !StremioDebridURLBuilder.looksConfigured(manifestURL) {
+                       !StremioDebridURLBuilder.looksConfigured(manifestURL),
+                       Self.looksLikeDebridStreamAddon(id: addon.id, name: addon.name) {
                         diagnostics.skippedNeedsConfig += 1
                         progressRows.append(
                             StremioAddonResolveProgress(
@@ -87,6 +88,16 @@ struct StremioPlaybackProvider: PlaybackProvider {
                         continue
                     }
                     if let types = addon.types, !types.isEmpty, !types.contains(mediaType) {
+                        progressRows.append(
+                            StremioAddonResolveProgress(
+                                addonID: addon.id,
+                                addonName: addon.name,
+                                status: .empty,
+                                playable: 0,
+                                skippedTorrent: 0,
+                                latencyMS: nil
+                            )
+                        )
                         continue
                     }
                     scheduled += 1
@@ -262,8 +273,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
             for (index, stream) in streams.enumerated() {
                 switch stream.playbackKind {
                 case .torrent:
-                    stats.torrent += 1
-                    if let hash = stream.infoHash,
+                    if let hash = stream.resolvedInfoHash,
                        let creds = debridCreds,
                        let candidate = await debridCandidate(
                         stream,
@@ -279,6 +289,9 @@ struct StremioPlaybackProvider: PlaybackProvider {
                        ) {
                         built.append(candidate)
                         stats.playable += 1
+                    } else {
+                        // Only count torrents that were not wrapped into a Debrid candidate.
+                        stats.torrent += 1
                     }
                 case .youtube:
                     stats.youtube += 1
@@ -289,10 +302,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
                 case .unsupported:
                     stats.unsupported += 1
                 case .http:
-                    if stream.notWebReady || stream.behaviorHints?.filename.map({
-                        [".mkv", ".avi", ".webm", ".zip", ".iso"].contains(where: $0.lowercased().contains)
-                    }) == true,
-                       playableFormat(for: stream, url: stream.url!) == nil {
+                    if stream.notWebReady {
                         stats.unsupported += 1
                         continue
                     }
@@ -303,7 +313,8 @@ struct StremioPlaybackProvider: PlaybackProvider {
                         addonID: addon.id,
                         addonName: addon.name,
                         providerID: providerID,
-                        client: addonClient
+                        client: addonClient,
+                        idPrefixes: addon.idPrefixes
                     ) {
                         built.append(candidate)
                         stats.playable += 1
@@ -354,10 +365,11 @@ struct StremioPlaybackProvider: PlaybackProvider {
         addonID: String,
         addonName: String,
         providerID: String,
-        client: StremioAddonClient
+        client: StremioAddonClient,
+        idPrefixes: [String]?
     ) -> PlaybackCandidate? {
         guard stream.ytId == nil,
-              stream.infoHash == nil,
+              stream.resolvedInfoHash == nil,
               stream.externalUrl == nil,
               let url = stream.url,
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
@@ -418,8 +430,9 @@ struct StremioPlaybackProvider: PlaybackProvider {
         }
         let initial = playbackSource(for: stream, url: url, embeddedSubtitles: embeddedSubs)
         let showID = context.request.media.id
+        let capturedPrefixes = idPrefixes
         let resolver = RefreshingStremioSource(initial: initial) {
-            let refreshed = try await client.streams(for: context)
+            let refreshed = try await client.streams(for: context, idPrefixes: capturedPrefixes)
             guard let match = refreshed.enumerated().first(where: { offset, candidate in
                 stableServerKey(for: candidate, order: offset, addonID: addonID, addonName: addonName)
                     == stableServer
@@ -486,26 +499,32 @@ struct StremioPlaybackProvider: PlaybackProvider {
 
     private static func playableFormat(for stream: StremioStream, url: URL) -> String? {
         if stream.notWebReady { return nil }
+        let scheme = url.scheme?.lowercased() ?? ""
+        guard ["http", "https"].contains(scheme) else { return nil }
+
+        // Hard-reject only when the URL path itself is a non-playable container.
+        // Debrid CDNs often use extensionless download URLs with `filename: ….mkv`
+        // in behaviorHints — those must still reach AVPlayer + source failover.
+        let pathExt = url.pathExtension.lowercased()
+        if ["mkv", "avi", "webm", "zip", "iso", "rar", "7z"].contains(pathExt) {
+            return nil
+        }
+        if ["m3u8", "mp4", "m4v", "mov"].contains(pathExt) {
+            return pathExt == "m3u8" ? "hls" : pathExt
+        }
+
         let detail = stream.detailText + " " + stream.displayLabel
         let declared = capture(
             #"(?i)(?:^|[•\s])(HLS|MP4|M4V|MOV|MKV|AVI|WEBM|ZIP|ISO)(?:$|[•\s])"#,
             in: detail
         )?.lowercased()
-        if let declared {
-            return ["hls", "mp4", "m4v", "mov"].contains(declared) ? declared : nil
+        if let declared, ["hls", "mp4", "m4v", "mov"].contains(declared) {
+            return declared
         }
-        let ext = url.pathExtension.lowercased()
-        if ["m3u8", "mp4", "m4v", "mov"].contains(ext) {
-            return ext == "m3u8" ? "hls" : ext
-        }
-        let filename = stream.behaviorHints?.filename?.lowercased() ?? ""
-        if [".mkv", ".avi", ".webm", ".zip", ".iso"].contains(where: filename.contains) {
-            return nil
-        }
-        if stream.infoHash == nil, stream.ytId == nil, stream.url != nil {
-            return "mp4"
-        }
-        return nil
+        // Declared MKV/AVI on an HTTP(S) URL with unknown/extensionless path:
+        // provisional mp4 — many Debrid unrestricted links remux or are labeled
+        // MKV while the download URL is playable progressive media.
+        return "mp4"
     }
 
     private static func cleanedName(_ value: String?) -> String? {
@@ -581,7 +600,8 @@ struct StremioPlaybackProvider: PlaybackProvider {
             addonID: addonID,
             isDebridCached: stream.looksDebridCached ? true : nil,
             bingeGroup: bingeGroup,
-            seedersHint: stream.seedersHint
+            seedersHint: stream.seedersHint,
+            requiresExtendedPrepare: true
         )
         let showID = context.request.media.id
         return PlaybackCandidate(
@@ -668,6 +688,12 @@ struct StremioPlaybackProvider: PlaybackProvider {
         return value > 0 ? value : 6
     }
 
+    private static func looksLikeDebridStreamAddon(id: String, name: String) -> Bool {
+        let haystack = (id + " " + name).lowercased()
+        return ["torrentio", "comet", "mediafusion", "aiostreams", "annatar", "jackettio", "torbox"]
+            .contains { haystack.contains($0) }
+    }
+
     private static func withTimeout<T: Sendable>(
         _ seconds: TimeInterval,
         operation: @escaping @Sendable () async throws -> T
@@ -748,44 +774,49 @@ struct StremioSubtitleProvider: SubtitleProvider {
         let addons = fixedAddons ?? StremioAddonStore.snapshotSubtitleAddons()
         guard !addons.isEmpty else { return [] }
         let tmdbID = request.tmdbID
-        return try await withThrowingTaskGroup(of: [SubtitleSource].self) { group in
+        return await withTaskGroup(of: [SubtitleSource].self) { group in
             for addon in addons {
                 group.addTask {
-                    let client = StremioAddonClient(client: self.client, baseURL: addon.baseURL)
-                    let entries = try await client.subtitles(
-                        for: request,
-                        idPrefixes: addon.idPrefixes,
-                        tmdbID: tmdbID
-                    )
-                    var seen = Set<String>()
-                    return entries.compactMap { entry -> SubtitleSource? in
-                        guard let url = entry.url,
-                              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
-                            return nil
-                        }
-                        let provider = Self.origin(for: entry, addonName: addon.name)
-                        let language = Self.language(for: entry.lang)
-                        let entryIdentity = entry.id.flatMap { raw in
-                            URL(string: raw).flatMap {
-                                $0.scheme == nil ? nil : $0.deletingQuery().absoluteString
-                            } ?? raw
-                        } ?? url.deletingQuery().absoluteString
-                        let stableID = "\(self.id):\(addon.id):\(provider.lowercased()):\(entryIdentity)"
-                        guard seen.insert(stableID).inserted else { return nil }
-                        return SubtitleSource(
-                            id: stableID,
-                            providerID: self.id,
-                            providerName: provider,
-                            label: SubtitleLanguage.displayName(language),
-                            languageCode: language,
-                            url: url
+                    do {
+                        let client = StremioAddonClient(client: self.client, baseURL: addon.baseURL)
+                        let entries = try await client.subtitles(
+                            for: request,
+                            idPrefixes: addon.idPrefixes,
+                            tmdbID: tmdbID
                         )
+                        var seen = Set<String>()
+                        return entries.compactMap { entry -> SubtitleSource? in
+                            guard let url = entry.url,
+                                  ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+                                return nil
+                            }
+                            let provider = Self.origin(for: entry, addonName: addon.name)
+                            let language = Self.language(for: entry.lang)
+                            let entryIdentity = entry.id.flatMap { raw in
+                                URL(string: raw).flatMap {
+                                    $0.scheme == nil ? nil : $0.deletingQuery().absoluteString
+                                } ?? raw
+                            } ?? url.deletingQuery().absoluteString
+                            let stableID = "\(self.id):\(addon.id):\(provider.lowercased()):\(entryIdentity)"
+                            guard seen.insert(stableID).inserted else { return nil }
+                            return SubtitleSource(
+                                id: stableID,
+                                providerID: self.id,
+                                providerName: provider,
+                                label: SubtitleLanguage.displayName(language),
+                                languageCode: language,
+                                url: url
+                            )
+                        }
+                    } catch {
+                        // One failing subtitle addon must not wipe the whole Stremio sub stack.
+                        return []
                     }
                 }
             }
             var merged: [SubtitleSource] = []
             var seen = Set<String>()
-            for try await batch in group {
+            for await batch in group {
                 for item in batch where seen.insert(item.id).inserted {
                     merged.append(item)
                 }

@@ -435,10 +435,33 @@ struct StremioStream: Decodable, Sendable {
         return parts.first ?? ""
     }
 
-    var isTorrentOnly: Bool { infoHash != nil && url == nil }
+    var isTorrentOnly: Bool { resolvedInfoHash != nil && url == nil }
     var isYouTube: Bool { ytId != nil && url == nil }
     var isExternalOnly: Bool { externalUrl != nil && url == nil }
     var notWebReady: Bool { behaviorHints?.notWebReady == true }
+
+    /// Prefer explicit `infoHash`, else parse `btih` from a magnet URL.
+    var resolvedInfoHash: String? {
+        if let infoHash {
+            let cleaned = infoHash
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: #"^urn:btih:"#, with: "", options: .regularExpression)
+            if cleaned.range(of: #"^[a-f0-9]{40}$"#, options: .regularExpression) != nil
+                || cleaned.range(of: #"^[a-z2-7]{32}$"#, options: .regularExpression) != nil {
+                return cleaned
+            }
+        }
+        guard let url, url.scheme?.lowercased() == "magnet" else { return nil }
+        let raw = url.absoluteString
+        guard let match = raw.range(
+            of: #"xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})"#,
+            options: .regularExpression
+        ) else { return nil }
+        let captured = raw[match]
+            .replacingOccurrences(of: #"xt=urn:btih:"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return captured.lowercased()
+    }
 
     /// Heuristic for Torrentio/Comet/MediaFusion cached debrid markers.
     var looksDebridCached: Bool {
@@ -478,7 +501,7 @@ struct StremioStream: Decodable, Sendable {
         if let url, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
             return .http
         }
-        if infoHash != nil { return .torrent }
+        if resolvedInfoHash != nil { return .torrent }
         if ytId != nil { return .youtube }
         if externalUrl != nil { return .external }
         return .unsupported

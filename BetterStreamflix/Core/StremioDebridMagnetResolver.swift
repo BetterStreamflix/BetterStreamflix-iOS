@@ -135,17 +135,57 @@ enum StremioDebridMagnetResolver {
         token: String,
         client: any HTTPClientProtocol
     ) async throws -> URL? {
+        // Prefer an already-downloaded torrent in the user's RD library (instant).
+        if let existing = try? await realDebridExistingTorrentLink(
+            infoHash: infoHash,
+            fileIdx: fileIdx,
+            token: token,
+            client: client
+        ) {
+            return existing
+        }
+
         var req = URLRequest(
             url: URL(string: "https://api.real-debrid.com/rest/1.0/torrents/instantAvailability/\(infoHash)")!
         )
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let payload = try await json(client.data(for: req).data)
-        // Presence of any hoster map means the hash is cached somewhere — fall through to addMagnet
-        // which typically resolves immediately. Returning nil keeps the normal path.
-        guard payload[infoHash] != nil || payload[infoHash.lowercased()] != nil else {
+        // Instant-availability is advisory only — presence means addMagnet should
+        // resolve quickly; we still fall through to the normal path.
+        _ = try? await client.data(for: req)
+        return nil
+    }
+
+    /// Scan RD torrent library for a matching hash that already has unrestricted links.
+    private static func realDebridExistingTorrentLink(
+        infoHash: String,
+        fileIdx: Int?,
+        token: String,
+        client: any HTTPClientProtocol
+    ) async throws -> URL? {
+        var req = URLRequest(
+            url: URL(string: "https://api.real-debrid.com/rest/1.0/torrents?limit=100")!
+        )
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let data = try await client.data(for: req).data
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             return nil
         }
-        return nil
+        let needle = infoHash.lowercased()
+        guard let match = rows.first(where: {
+            (($0["hash"] as? String) ?? "").lowercased() == needle
+                && (($0["status"] as? String)?.lowercased() == "downloaded"
+                    || ($0["status"] as? String)?.lowercased() == "uploading")
+        }) else { return nil }
+        guard let torrentID = match["id"] as? String else { return nil }
+
+        var infoReq = URLRequest(
+            url: URL(string: "https://api.real-debrid.com/rest/1.0/torrents/info/\(torrentID)")!
+        )
+        infoReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let info = try await json(client.data(for: infoReq).data)
+        guard let links = info["links"] as? [String], !links.isEmpty else { return nil }
+        let idx = min(max(fileIdx ?? 0, 0), links.count - 1)
+        return try await realDebridUnrestrictLink(links[idx], token: token, client: client)
     }
 
     private static func realDebridUnrestrictLink(
@@ -393,7 +433,47 @@ actor StremioStreamSessionCache {
     static func cacheKey(for context: PlaybackLookupContext) -> String {
         let media = context.request.media
         let episode = context.request.episode.map { "\($0.seasonNumber):\($0.number)" } ?? "movie"
-        return "\(media.imdbID ?? media.id)|\(episode)|\(media.tmdbID.map(String.init) ?? "")"
+        let debrid = debridFingerprint()
+        let addons = addonFingerprint()
+        return "\(media.imdbID ?? media.id)|\(episode)|\(media.tmdbID.map(String.init) ?? "")|\(debrid)|\(addons)"
+    }
+
+    private static func debridFingerprint() -> String {
+        let preferred = UserDefaults.standard.string(forKey: StremioDebridStore.preferredServiceKey) ?? "rd"
+        let direct: String
+        if UserDefaults.standard.object(forKey: StremioDebridStore.directUnrestrictKey) == nil {
+            direct = "1"
+        } else {
+            direct = UserDefaults.standard.bool(forKey: StremioDebridStore.directUnrestrictKey) ? "1" : "0"
+        }
+        // Presence of any stored token (not the secret itself) so rebind/token save invalidates cache.
+        let services = StremioDebridService.allCases.filter { service in
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: "com.betterstreamflix.ios.stremio.debrid",
+                kSecAttrAccount as String: "debrid.\(service.rawValue)",
+                kSecReturnData as String: false,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+            ]
+            return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+        }.map(\.rawValue).sorted().joined(separator: ",")
+        return "\(preferred)|\(direct)|\(services)"
+    }
+
+    private static func addonFingerprint() -> String {
+        let defaults = UserDefaults.standard
+        guard let data = defaults.data(forKey: StremioAddonStore.storageKey),
+              let decoded = try? JSONDecoder().decode([InstalledStremioAddon].self, from: data) else {
+            return "none"
+        }
+        return decoded
+            .filter(\.isEnabled)
+            .filter(\.supportsStream)
+            .map { "\($0.id):\($0.manifestURL.absoluteString)" }
+            .sorted()
+            .joined(separator: ";")
+            .hashValue
+            .description
     }
 }
 

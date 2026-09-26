@@ -201,8 +201,8 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
         supportsMeta = manifest.supportsMeta
         supportsStream = manifest.supportsStream
         supportsSubtitles = manifest.supportsSubtitles
-        idPrefixes = manifest.idPrefixes
-        resourceTypes = manifest.types
+        idPrefixes = Self.mergedStreamIdPrefixes(from: manifest)
+        resourceTypes = Self.mergedStreamTypes(from: manifest)
         isAdult = manifest.isAdult
         isP2P = manifest.isP2P
         isConfigurable = manifest.isConfigurable
@@ -211,6 +211,19 @@ struct InstalledStremioAddon: Identifiable, Codable, Hashable, Sendable {
             if catalog.supportsSearch { return true }
             return !catalog.requiresExtras
         }
+    }
+
+    /// Prefer stream-resource `idPrefixes` when present; fall back to top-level.
+    static func mergedStreamIdPrefixes(from manifest: StremioManifest) -> [String]? {
+        let resource = manifest.resource("stream")?.idPrefixes
+        if let resource, !resource.isEmpty { return resource }
+        return manifest.idPrefixes
+    }
+
+    static func mergedStreamTypes(from manifest: StremioManifest) -> [String]? {
+        let resource = manifest.resource("stream")?.types
+        if let resource, !resource.isEmpty { return resource }
+        return manifest.types
     }
 
     mutating func applyUpdate(from manifest: StremioManifest, baseURL: URL, manifestURL: URL) {
@@ -611,6 +624,7 @@ final class StremioAddonStore: ObservableObject {
                 continue
             }
         }
+        await StremioStreamSessionCache.shared.clear()
         return rebound
     }
 

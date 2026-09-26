@@ -39,7 +39,7 @@ The app does **not** host media. Catalog metadata and artwork come from **TMDB**
 | | |
 |---|---|
 | **Bundle ID** | `com.betterstreamflix.ios` |
-| **Current version** | **0.1.13** |
+| **Current version** | **0.1.14** |
 | **UI** | SwiftUI · Liquid Glass accents · dark cinematic chrome |
 | **Player** | Native AVPlayer (HLS / MP4) · PiP · AirPlay |
 | **Distribution** | Unsigned IPA via GitHub Actions + public update feed |
@@ -95,11 +95,13 @@ Language-aware Core scrapers (EN / DE / FR / ES / IT / PL and more) sit alongsid
 
 **Debrid-first policy:** torrents become HTTP via addon manifests **or** optional direct Debrid API unrestrict (Real-Debrid, AllDebrid, Premiumize, TorBox). The app never runs BitTorrent itself.
 
-Highlights in **0.1.13**:
-- Validate tokens with premium badges, days/points strip, mismatch/unhealthy chips, expiry alerts, **Rebind**, auto-rebind
-- Direct magnet → HTTP with hardened PM / AD / TorBox paths and soft-skip unreachable addons
-- Prefer `[RD+]` / cached / healthy seeders / BluRay over CAM; quality / cached / addon filters
-- Fast Cached / Quality install profiles; 6h foreground health sweep
+Highlights in **0.1.14**:
+- Debrid HTTP no longer dropped when `filename` says `.mkv` on extensionless CDN URLs
+- Magnet→HTTP prepare budget / discovery wait fixed so unrestrict can finish
+- Stream-resource idPrefixes, session-cache fingerprint, subtitle-addon isolation
+- SerienStream CF gate soft-fail; KinoGer multi-origin mirrors
+
+Prior **0.1.13** also shipped: validate/rebind, direct magnet unrestrict, `[RD+]` ranking, install profiles, health sweep.
 
 ---
 
@@ -124,7 +126,7 @@ Sideload with your own signing flow (AltStore, Sideloadly, Xcode, TrollStore, et
 ### Build an unsigned IPA locally
 
 ```sh
-./build-unsigned-ipa.sh 0.1.13
+./build-unsigned-ipa.sh 0.1.14
 ```
 
 CI does the same on every push to `main` via [`.github/workflows/unsigned-ipa.yml`](.github/workflows/unsigned-ipa.yml): build → artifact → GitHub Release → update feeds.

@@ -365,6 +365,77 @@ struct StremioAddonProviderTests {
         #expect(stream.playbackKind == .http)
     }
 
+    @Test("Extensionless Debrid HTTP keeps MKV-labeled filenames as candidates")
+    func debridHTTPIgnoresFilenameContainer() async throws {
+        let client = StremioFixtureClient(streamBody: #"""
+        {
+          "streams": [
+            {"name":"[RD+] 1080p","title":"Cached · MKV · BluRay",
+             "url":"https://download.real-debrid.com/d/ABC123/file",
+             "behaviorHints":{"filename":"Movie.Name.2024.1080p.BluRay.mkv","notWebReady":false}},
+            {"name":"bad","title":"Local MKV","url":"https://cdn.example/movie.mkv",
+             "behaviorHints":{"filename":"movie.mkv"}}
+          ]
+        }
+        """#)
+        let provider = StremioPlaybackProvider(client: client, baseURL: baseURL)
+        let movie = MediaItem(id: "movie", providerID: "tmdb", kind: .movie,
+                              title: "Example", imdbID: "tt0133093")
+        let candidates = try await provider.candidates(for: .init(request: .init(media: movie, episode: nil)))
+        #expect(candidates.count == 1)
+        let source = try await candidates[0].resolve()
+        #expect(source.url.host?.contains("real-debrid") == true)
+    }
+
+    @Test("Magnet URLs without infoHash field route as torrents")
+    func magnetURLPlaybackKind() throws {
+        let hash = "abcdef0123456789abcdef0123456789abcdef01"
+        let json = Data("""
+        {"name":"Torrent","url":"magnet:?xt=urn:btih:\(hash)&dn=Example"}
+        """.utf8)
+        let stream = try JSONDecoder().decode(StremioStream.self, from: json)
+        #expect(stream.playbackKind == .torrent)
+        #expect(stream.resolvedInfoHash == hash)
+    }
+
+    @Test("Installed addon merges stream-resource idPrefixes")
+    func mergedStreamIdPrefixes() throws {
+        let json = Data(#"""
+        {"id":"x","name":"X","resources":[{"name":"stream","types":["movie"],"idPrefixes":["tt"]}],
+         "types":["movie","series"],"catalogs":[]}
+        """#.utf8)
+        let manifest = try JSONDecoder().decode(StremioManifest.self, from: json)
+        #expect(InstalledStremioAddon.mergedStreamIdPrefixes(from: manifest) == ["tt"])
+        #expect(InstalledStremioAddon.mergedStreamTypes(from: manifest) == ["movie"])
+    }
+
+    @Test("One failing Stremio subtitle addon does not wipe others")
+    func subtitleAddonIsolation() async throws {
+        final class MixedClient: HTTPClientProtocol, @unchecked Sendable {
+            func data(for request: URLRequest) async throws -> HTTPResponse {
+                let path = request.url?.path ?? ""
+                if path.contains("bad") {
+                    throw AppError.providerUnavailable("down")
+                }
+                let body = #"{"subtitles":[{"id":"ok","lang":"eng","url":"https://subs.example/ok.srt"}]}"#
+                return HTTPResponse(data: Data(body.utf8), response: HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!)
+            }
+        }
+        let provider = StremioSubtitleProvider(
+            client: MixedClient(),
+            fixedAddons: [
+                (id: "bad", name: "Bad", baseURL: URL(string: "https://bad.example/")!),
+                (id: "good", name: "Good", baseURL: URL(string: "https://good.example/")!),
+            ]
+        )
+        let request = SubtitleLookupRequest(kind: .movie, imdbID: "tt0133093")
+        let subs = try await provider.subtitles(for: request)
+        #expect(subs.count == 1)
+        #expect(subs[0].providerName == "Good")
+    }
+
     @Test("Meta detail decodes cast and trailers")
     func metaCastTrailers() throws {
         let json = Data(#"""

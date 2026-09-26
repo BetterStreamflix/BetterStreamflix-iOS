@@ -804,47 +804,69 @@ struct HDFilmePlaybackProvider: GermanPlaybackProvider {
 struct KinoGerPlaybackProvider: GermanPlaybackProvider {
     var id: String { "kinoger" }
     var displayName: String { "KinoGer" }
-    var baseURL: URL { Self.base }
+    var baseURL: URL { preferredOrigins[0] }
 
-    private static let base = URL(string: "https://kinoger.fun/")!
+    private static let workingOriginKey = "kinoger.workingOrigin"
+    private var preferredOrigins: [URL] {
+        var origins = [
+            URL(string: "https://kinoger.fun/")!,
+            URL(string: "https://kinoger.to/")!,
+            URL(string: "https://kinoger.com/")!,
+        ]
+        if let raw = UserDefaults.standard.string(forKey: Self.workingOriginKey),
+           let saved = URL(string: raw) {
+            origins.removeAll { $0.origin == saved.origin }
+            origins.insert(saved, at: 0)
+        }
+        return origins
+    }
 
     func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
-        guard let page = try await findPage(for: context) else {
-            return await imdbMeinecloudFallback(for: context)
-        }
-        let html = try await GermanScrape.client.page(page, referer: baseURL)
+        for origin in preferredOrigins {
+            try Task.checkCancellation()
+            guard let page = try? await findPage(for: context, origin: origin) else { continue }
+            guard let html = try? await GermanScrape.client.page(page, referer: origin) else { continue }
 
-        // Reject franchise hijacks when the page exposes a different IMDb id.
-        if let expectedIMDb = context.request.media.imdbID?.lowercased(),
-           let pageIMDb = AnimeHTML.captures(#"(tt\d{7,8})"#, in: html).first?[1].lowercased(),
-           pageIMDb != expectedIMDb {
-            return await imdbMeinecloudFallback(for: context)
-        }
+            // Reject franchise hijacks when the page exposes a different IMDb id.
+            if let expectedIMDb = context.request.media.imdbID?.lowercased(),
+               let pageIMDb = AnimeHTML.captures(#"(tt\d{7,8})"#, in: html).first?[1].lowercased(),
+               pageIMDb != expectedIMDb {
+                continue
+            }
 
-        let links: [(url: URL, label: String)]
-        if let episode = context.request.episode {
-            links = Self.episodeLinks(
-                in: html,
-                page: page,
-                season: episode.seasonNumber,
-                episode: episode.number
-            )
-        } else {
-            links = Self.movieLinks(in: html, page: page)
-        }
+            let links: [(url: URL, label: String)]
+            if let episode = context.request.episode {
+                links = Self.episodeLinks(
+                    in: html,
+                    page: page,
+                    season: episode.seasonNumber,
+                    episode: episode.number
+                )
+            } else {
+                links = Self.movieLinks(in: html, page: page)
+            }
 
-        var hosters = links.map { link in
-            GermanHoster(
-                name: MeinecloudEmbedHelper.hosterDisplayName(for: link.url),
-                url: link.url,
-                referer: page
-            )
+            var hosters = links.map { link in
+                GermanHoster(
+                    name: MeinecloudEmbedHelper.hosterDisplayName(for: link.url),
+                    url: link.url,
+                    referer: page
+                )
+            }
+            // Expand a couple of wrappers in parallel — full expand-of-all was serial
+            // and slower than Android's getServers → play first path.
+            hosters = await GermanScrape.expandingWrappers(hosters, limit: 4)
+            if !hosters.isEmpty {
+                UserDefaults.standard.set(origin.absoluteString, forKey: Self.workingOriginKey)
+                return hosters
+            }
+            let fallback = await imdbMeinecloudFallback(for: context, referer: page)
+            if !fallback.isEmpty {
+                UserDefaults.standard.set(origin.absoluteString, forKey: Self.workingOriginKey)
+                return fallback
+            }
         }
-        // Expand a couple of wrappers in parallel — full expand-of-all was serial
-        // and slower than Android's getServers → play first path.
-        hosters = await GermanScrape.expandingWrappers(hosters, limit: 3)
-        if !hosters.isEmpty { return hosters }
-        return await imdbMeinecloudFallback(for: context, referer: page)
+        return await imdbMeinecloudFallback(for: context)
     }
 
     private func imdbMeinecloudFallback(
@@ -862,18 +884,18 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
         }
     }
 
-    private func findPage(for context: PlaybackLookupContext) async throws -> URL? {
+    private func findPage(for context: PlaybackLookupContext, origin: URL) async throws -> URL? {
         let season = context.request.episode?.seasonNumber
         var ranked: [(url: URL, title: String, year: Int?)] = []
         var seen = Set<URL>()
 
         for query in GermanScrape.queries(for: context) {
             try Task.checkCancellation()
-            guard let search = GermanScrape.url(baseURL, "", query: [
+            guard let search = GermanScrape.url(origin, "", query: [
                 "do": "search",
                 "subaction": "search",
                 "story": query,
-            ]), let html = try? await GermanScrape.client.page(search, referer: baseURL) else { continue }
+            ]), let html = try? await GermanScrape.client.page(search, referer: origin) else { continue }
 
             for card in AnimeHTML.parse(html).all({ $0.tag == "div" && $0.hasClass("short") }) {
                 let anchor = card.first { $0.hasClass("title") }?.first { $0.tag == "a" && $0["href"].contains(".html") }
@@ -883,7 +905,7 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
                 let cleaned = Self.cleanTitle(raw)
                 let year = GermanTitleMatching.year(in: raw) ?? GermanTitleMatching.year(in: card.text)
                 guard GermanTitleMatching.matches(cleaned, titles: context.titles),
-                      let url = MeinecloudEmbedHelper.normalize(anchor["href"], relativeTo: baseURL),
+                      let url = MeinecloudEmbedHelper.normalize(anchor["href"], relativeTo: origin),
                       seen.insert(url).inserted else { continue }
                 ranked.append((url, cleaned.isEmpty ? raw : cleaned, year))
             }
@@ -1242,6 +1264,10 @@ struct SerienStreamPlaybackProvider: GermanPlaybackProvider {
     /// whose iframe still points at it.
     private static func resolvePlayURL(_ play: URL, referer: URL, serverName: String) async throws -> PlaybackSource {
         let response = try await GermanScrape.client.get(play, referer: referer)
+        if isChallengePage(response.text, url: response.url) {
+            // Soft-fail: omit this hoster at prepare time without poisoning discovery.
+            throw AppError.noStream
+        }
         if !isSiteURL(response.url) {
             return try await HosterExtractor.resolve(response.url, referer: referer, serverName: serverName)
         }
@@ -1252,7 +1278,21 @@ struct SerienStreamPlaybackProvider: GermanPlaybackProvider {
                   !match[1].localizedCaseInsensitiveContains("youtu") else { continue }
             return try await HosterExtractor.resolve(url, referer: referer, serverName: serverName)
         }
-        throw AppError.providerUnavailable("SerienStream verification gate is still active")
+        throw AppError.noStream
+    }
+
+    private static func isChallengePage(_ html: String, url: URL) -> Bool {
+        if isSiteURL(url) {
+            let lowered = html.lowercased()
+            if lowered.contains("cf-browser-verification")
+                || lowered.contains("challenge-platform")
+                || lowered.contains("just a moment")
+                || lowered.contains("cdn-cgi/challenge")
+                || lowered.contains("_cf_chl") {
+                return true
+            }
+        }
+        return false
     }
 
     private static func isSiteURL(_ url: URL) -> Bool {

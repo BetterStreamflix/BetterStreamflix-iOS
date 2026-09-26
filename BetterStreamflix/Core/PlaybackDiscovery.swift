@@ -58,6 +58,8 @@ struct StreamDisplayMetadata: Sendable {
     let isDebridCached: Bool?
     let bingeGroup: String?
     let seedersHint: Int?
+    /// Magnet→HTTP unrestrict (and similar) needs a longer prepare budget than hoster smoke.
+    let requiresExtendedPrepare: Bool
 
     init(
         origin: String,
@@ -70,7 +72,8 @@ struct StreamDisplayMetadata: Sendable {
         addonID: String? = nil,
         isDebridCached: Bool? = nil,
         bingeGroup: String? = nil,
-        seedersHint: Int? = nil
+        seedersHint: Int? = nil,
+        requiresExtendedPrepare: Bool = false
     ) {
         self.origin = origin
         self.quality = quality
@@ -83,6 +86,7 @@ struct StreamDisplayMetadata: Sendable {
         self.isDebridCached = isDebridCached
         self.bingeGroup = bingeGroup
         self.seedersHint = seedersHint
+        self.requiresExtendedPrepare = requiresExtendedPrepare
     }
 }
 
@@ -268,8 +272,8 @@ final class PlaybackDiscovery {
     private let backgroundDeadline: Duration
     private let prepare: @Sendable (PlaybackCandidate) async throws -> PlayableStream
 
-    init(settleDelay: Duration = .milliseconds(0), initialDeadline: Duration = .seconds(6),
-         backgroundDeadline: Duration = .seconds(35),
+    init(settleDelay: Duration = .milliseconds(0), initialDeadline: Duration = .seconds(20),
+         backgroundDeadline: Duration = .seconds(45),
          prepare: @escaping @Sendable (PlaybackCandidate) async throws -> PlayableStream = { try await PlaybackDiscovery.prepare($0) }) {
         self.settleDelay = settleDelay
         self.initialDeadline = initialDeadline
@@ -278,10 +282,14 @@ final class PlaybackDiscovery {
     }
 
     nonisolated static func prepare(_ candidate: PlaybackCandidate) async throws -> PlayableStream {
+        // Hosters fail fast (~3.5s). Debrid magnet→HTTP needs the full unrestrict poll
+        // window (RD/AD/TB often 5–12s) or discovery kills every torrent candidate.
+        let budget: Duration = candidate.displayMetadata?.requiresExtendedPrepare == true
+            ? .seconds(18)
+            : .seconds(3.5)
         try await withThrowingTaskGroup(of: PlayableStream.self) { group in
             group.addTask { try await prepareStream(candidate) }
-            // Fail fast so parallel discovery can advance to the next source.
-            group.addTask { try await Task.sleep(for: .seconds(3.5)); throw AppError.noStream }
+            group.addTask { try await Task.sleep(for: budget); throw AppError.noStream }
             defer { group.cancelAll() }
             guard let result = try await group.next() else { throw AppError.noStream }
             return result
@@ -309,6 +317,14 @@ final class PlaybackDiscovery {
             "candidate DONE id=\(candidate.id) total=\(PlaybackStartupTrace.duration(since: perfStart))ms"
         )
         return PlayableStream(candidate: candidate, source: source, qualities: [])
+    }
+
+    /// Prefer cached Debrid rows, then any extended-prepare (magnet unrestrict) over plain hosters.
+    nonisolated private static func discoveryPrepRank(_ candidate: PlaybackCandidate) -> [Int] {
+        let meta = candidate.displayMetadata
+        let cached = meta?.isDebridCached == true ? 0 : 1
+        let extended = meta?.requiresExtendedPrepare == true ? 0 : 1
+        return [cached, extended]
     }
 
     func start(context: PlaybackLookupContext, providers: [any PlaybackProvider], policy: StreamSelectionPolicy) async throws -> PlayableStream {
@@ -349,9 +365,17 @@ final class PlaybackDiscovery {
                                         )
                                     }
                                     await withTaskGroup(of: PlayableStream?.self) { servers in
-                                        // Race the first few hosters hard — first
-                                        // playable wins; the rest keep filling the menu.
-                                        for candidate in candidates.prefix(8) {
+                                        // Race early candidates hard — first playable wins.
+                                        // Prefer cached / extended-prepare (Debrid) rows first so
+                                        // the prefix window is not wasted on slow uncached magnets.
+                                        let ordered = candidates.enumerated().sorted { lhs, rhs in
+                                            Self.discoveryPrepRank(lhs.element)
+                                                .lexicographicallyPrecedes(Self.discoveryPrepRank(rhs.element))
+                                        }.map(\.element)
+                                        let raceLimit = ordered.contains(where: {
+                                            $0.displayMetadata?.requiresExtendedPrepare == true
+                                        }) ? 14 : 8
+                                        for candidate in ordered.prefix(raceLimit) {
                                             servers.addTask {
                                                 do {
                                                     return try await prepare(candidate)
