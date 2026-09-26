@@ -1826,10 +1826,35 @@ struct PlayerScreen: View {
             if model.source == nil,
                model.errorMessage != nil,
                !model.isLoading {
-                StremioPlayerEmptyActionsView(diagnostics: model.stremioDiagnostics)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                StremioPlayerEmptyActionsView(
+                    diagnostics: model.stremioDiagnostics,
+                    onOpenFilters: {
+                        model.resetSourceFilters()
+                        showSourceFilters = true
+                    }
+                )
+                .padding(.horizontal, 20)
+                .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if model.source != nil,
+                      model.hasActiveSourceFilters,
+                      model.filteredStreams.isEmpty,
+                      !model.streams.isEmpty {
+                VStack(spacing: 8) {
+                    Text("No sources match these filters")
+                        .font(.caption.weight(.semibold))
+                    Button {
+                        model.resetSourceFilters()
+                    } label: {
+                        Label("Reset filters", systemImage: "arrow.counterclockwise")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(14)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 20)
+                .padding(.bottom, ScreenMetrics.bottomSafeAreaInset + 28)
             }
         }
         // Source open failures use the soft top banner + in-player Retry / Try next.

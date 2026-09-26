@@ -718,6 +718,18 @@ final class StremioAddonStore: ObservableObject {
         }
     }
 
+    /// Throttled foreground health pass so dead hosts don’t keep eating stream slots.
+    func refreshEnabledStreamHealth() async {
+        let targets = addons.filter(\.isEnabled)
+        await withTaskGroup(of: Void.self) { group in
+            for addon in targets {
+                group.addTask { @MainActor in
+                    await self.refreshHealth(for: addon)
+                }
+            }
+        }
+    }
+
     func probePopularPresets() async {
         await withTaskGroup(of: (String, StremioAddonHealth).self) { group in
             for preset in StremioCuratedCatalog.popularPresets {
@@ -786,7 +798,7 @@ final class StremioAddonStore: ObservableObject {
 
     nonisolated static func snapshotStreamAddons(
         defaults: UserDefaults = .standard
-    ) -> [(id: String, name: String, baseURL: URL, idPrefixes: [String]?, types: [String]?, requiresConfig: Bool, manifestURL: URL?)] {
+    ) -> [(id: String, name: String, baseURL: URL, idPrefixes: [String]?, types: [String]?, requiresConfig: Bool, manifestURL: URL?, health: StremioAddonHealth)] {
         guard let data = defaults.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([InstalledStremioAddon].self, from: data) else {
             return []
@@ -814,7 +826,8 @@ final class StremioAddonStore: ObservableObject {
                     $0.idPrefixes,
                     $0.resourceTypes,
                     $0.requiresConfiguration,
-                    $0.manifestURL as URL?
+                    $0.manifestURL as URL?,
+                    $0.health
                 )
             }
     }

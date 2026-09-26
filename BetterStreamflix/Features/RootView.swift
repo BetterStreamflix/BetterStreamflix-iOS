@@ -77,6 +77,7 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, hasCompletedSetup else { return }
             Task { await environment.refreshContinueWatchingForNewEpisodes() }
+            Task { await StremioForegroundHealthSweep.runIfNeeded() }
         }
         .onChange(of: isHomeReady) { _, isReady in
             guard isReady, let release = pendingAutomaticUpdate else { return }

@@ -4,6 +4,7 @@ import UIKit
 /// Empty-state actions when Stremio only returned torrents / external / YouTube links.
 struct StremioPlayerEmptyActionsView: View {
     let diagnostics: StremioResolveDiagnostics
+    var onOpenFilters: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 10) {
@@ -18,6 +19,19 @@ struct StremioPlayerEmptyActionsView: View {
                                 .background(.ultraThinMaterial, in: Capsule())
                         }
                     }
+                }
+            }
+            if diagnostics.skippedUnsupportedFormat > 0, diagnostics.playableHTTP == 0 {
+                Text("Addons returned MKV/Remux-only links iOS can’t play directly — try cached filters or another addon.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                if let onOpenFilters {
+                    Button(action: onOpenFilters) {
+                        Label("Open source filters", systemImage: "line.3.horizontal.decrease.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
             HStack(spacing: 10) {

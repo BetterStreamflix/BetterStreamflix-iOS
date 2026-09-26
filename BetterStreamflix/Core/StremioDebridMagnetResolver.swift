@@ -412,6 +412,20 @@ enum StremioFavoriteCatalogsStore {
     }
 }
 
+/// Foreground health sweep — at most once per 6 hours.
+enum StremioForegroundHealthSweep {
+    private static let key = "stremio.health.lastForegroundSweep.v1"
+    private static let interval: TimeInterval = 6 * 60 * 60
+
+    @MainActor
+    static func runIfNeeded(store: StremioAddonStore = .shared) async {
+        let last = UserDefaults.standard.object(forKey: key) as? Date ?? .distantPast
+        guard Date().timeIntervalSince(last) >= interval else { return }
+        UserDefaults.standard.set(Date(), forKey: key)
+        await store.refreshEnabledStreamHealth()
+    }
+}
+
 /// Persisted player source-filter defaults.
 enum StremioSourceSortMode: String, CaseIterable, Identifiable, Codable {
     case bestMatch

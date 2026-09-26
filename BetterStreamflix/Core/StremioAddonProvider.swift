@@ -4,7 +4,7 @@ import Security
 struct StremioPlaybackProvider: PlaybackProvider {
     let id: String
     private let client: any HTTPClientProtocol
-    private let fixedAddons: [(id: String, name: String, baseURL: URL, idPrefixes: [String]?, types: [String]?, requiresConfig: Bool, manifestURL: URL?)]?
+    private let fixedAddons: [(id: String, name: String, baseURL: URL, idPrefixes: [String]?, types: [String]?, requiresConfig: Bool, manifestURL: URL?, health: StremioAddonHealth)]?
 
     init(
         client: any HTTPClientProtocol = HTTPClient(),
@@ -14,7 +14,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
         self.id = providerID
         self.client = client
         self.fixedAddons = fixedAddons?.map {
-            ($0.id, $0.name, $0.baseURL, nil as [String]?, nil as [String]?, false, nil as URL?)
+            ($0.id, $0.name, $0.baseURL, nil as [String]?, nil as [String]?, false, nil as URL?, StremioAddonHealth.unknown)
         }
     }
 
@@ -23,7 +23,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
         self.id = providerID
         self.client = client
         if let baseURL {
-            fixedAddons = [("test", "Test", baseURL, nil, nil, false, nil)]
+            fixedAddons = [("test", "Test", baseURL, nil, nil, false, nil, .unknown)]
         } else {
             fixedAddons = []
         }
@@ -35,17 +35,21 @@ struct StremioPlaybackProvider: PlaybackProvider {
             return cached
         }
 
-        let addons = fixedAddons ?? StremioAddonStore.snapshotStreamAddons()
+        let allAddons = fixedAddons ?? StremioAddonStore.snapshotStreamAddons()
+        // Soft-skip known-unreachable hosts on the first pass; retry if nothing playable.
+        let primaryAddons = allAddons.filter { $0.health != .unreachable }
+        let deferredAddons = allAddons.filter { $0.health == .unreachable }
+        let addons = primaryAddons.isEmpty ? allAddons : primaryAddons
         var diagnostics = StremioResolveDiagnostics()
         diagnostics.debridConfigured = Self.isDebridConfigured()
         diagnostics.missingIMDb = context.request.media.imdbID == nil
-        diagnostics.queriedAddons = addons.count
+        diagnostics.queriedAddons = allAddons.count
 
         let showID = context.request.media.id
         let preferredBinge = StremioBingeContinuityStore.preferredGroup(forShowID: showID)
         diagnostics.continuingBingeGroup = preferredBinge
 
-        guard !addons.isEmpty else {
+        guard !allAddons.isEmpty else {
             StremioResolveDiagnosticsStore.update(diagnostics)
             return []
         }
@@ -143,6 +147,38 @@ struct StremioPlaybackProvider: PlaybackProvider {
                 }
             }
 
+            // One soft retry for hosts previously marked unreachable when primary wave was empty.
+            if merged.isEmpty, !deferredAddons.isEmpty, !primaryAddons.isEmpty {
+                iterator = deferredAddons.makeIterator()
+                enqueueNext()
+                while inFlight > 0 {
+                    if let batch = try await group.next() {
+                        inFlight -= 1
+                        diagnostics.playableHTTP += batch.stats.playable
+                        diagnostics.skippedTorrent += batch.stats.torrent
+                        diagnostics.skippedYouTube += batch.stats.youtube
+                        diagnostics.skippedExternal += batch.stats.external
+                        diagnostics.skippedUnsupportedFormat += batch.stats.unsupported
+                        diagnostics.failedAddons += batch.stats.failed ? 1 : 0
+                        if batch.usedTMDb { diagnostics.usedTMDbIdentifier = true }
+                        progressRows.append(batch.progress)
+                        StremioResolveDiagnosticsStore.publishProgress(progressRows)
+                        for candidate in batch.candidates {
+                            let normalized = Self.normalizedURLKey(from: candidate)
+                            if let normalized, !seenURLs.insert(normalized).inserted {
+                                continue
+                            }
+                            if seen.insert(candidate.id).inserted {
+                                merged.append(candidate)
+                            }
+                        }
+                        enqueueNext()
+                    } else {
+                        break
+                    }
+                }
+            }
+
             // Soft-rank: cached first, then binge continuity, already reflected in StreamSelectionPolicy.
             merged.sort { lhs, rhs in
                 Self.previewRank(lhs, preferredBinge: preferredBinge)
@@ -171,7 +207,7 @@ struct StremioPlaybackProvider: PlaybackProvider {
     }
 
     private static func queryAddon(
-        addon: (id: String, name: String, baseURL: URL, idPrefixes: [String]?, types: [String]?, requiresConfig: Bool, manifestURL: URL?),
+        addon: (id: String, name: String, baseURL: URL, idPrefixes: [String]?, types: [String]?, requiresConfig: Bool, manifestURL: URL?, health: StremioAddonHealth),
         context: PlaybackLookupContext,
         mediaType: String,
         providerID: String,

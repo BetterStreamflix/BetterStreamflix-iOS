@@ -6,32 +6,61 @@ struct StremioStatusStripView: View {
     @ObservedObject private var store = StremioAddonStore.shared
     @ObservedObject private var debrid = StremioDebridStore.shared
 
+    private var mismatchedBoundCount: Int {
+        guard let preferred = debrid.preferredProfile?.service else { return 0 }
+        return store.streamAddons.filter { addon in
+            guard let bound = StremioDebridURLBuilder.boundService(in: addon.manifestURL) else {
+                return false
+            }
+            return bound != preferred
+        }.count
+    }
+
+    private var unhealthyCount: Int {
+        store.enabledAddons.filter { $0.health == .unreachable || $0.health == .degraded }.count
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                statusChip(
-                    title: "\(store.enabledAddons.count) plugins",
-                    systemImage: "puzzlepiece.extension.fill"
-                )
-                statusChip(
-                    title: "\(store.streamAddons.count) streams",
-                    systemImage: "play.rectangle.fill"
-                )
-                if debrid.hasAnyToken {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
                     statusChip(
-                        title: debridPremiumChipTitle,
-                        systemImage: "key.horizontal.fill",
-                        bright: true
+                        title: "\(store.enabledAddons.count) plugins",
+                        systemImage: "puzzlepiece.extension.fill"
                     )
-                } else {
-                    statusChip(title: "No Debrid", systemImage: "exclamationmark.triangle.fill")
-                }
-                if !store.addonsWithUpdates.isEmpty {
                     statusChip(
-                        title: "\(store.addonsWithUpdates.count) updates",
-                        systemImage: "arrow.down.circle.fill",
-                        bright: true
+                        title: "\(store.streamAddons.count) streams",
+                        systemImage: "play.rectangle.fill"
                     )
+                    if debrid.hasAnyToken {
+                        statusChip(
+                            title: debridPremiumChipTitle,
+                            systemImage: "key.horizontal.fill",
+                            bright: true
+                        )
+                    } else {
+                        statusChip(title: "No Debrid", systemImage: "exclamationmark.triangle.fill")
+                    }
+                    if mismatchedBoundCount > 0 {
+                        statusChip(
+                            title: "\(mismatchedBoundCount) mismatched",
+                            systemImage: "exclamationmark.arrow.triangle.2.circlepath",
+                            bright: true
+                        )
+                    }
+                    if unhealthyCount > 0 {
+                        statusChip(
+                            title: "\(unhealthyCount) unhealthy",
+                            systemImage: "wifi.exclamationmark"
+                        )
+                    }
+                    if !store.addonsWithUpdates.isEmpty {
+                        statusChip(
+                            title: "\(store.addonsWithUpdates.count) updates",
+                            systemImage: "arrow.down.circle.fill",
+                            bright: true
+                        )
+                    }
                 }
             }
             Text(debrid.directMagnetUnrestrictEnabled
@@ -47,12 +76,16 @@ struct StremioStatusStripView: View {
 
     private var debridPremiumChipTitle: String {
         guard let profile = debrid.preferredProfile else { return "Debrid" }
-        if let status = debrid.accountStatuses[profile.service],
-           let days = status.premiumDays {
-            if days <= 5 {
-                return "\(profile.service.shortTitle) · \(days)d left"
+        if let status = debrid.accountStatuses[profile.service] {
+            if let days = status.premiumDays {
+                if days <= 5 {
+                    return "\(profile.service.shortTitle) · \(days)d left"
+                }
+                return "\(profile.service.shortTitle) · \(days)d"
             }
-            return "\(profile.service.shortTitle) · \(days)d"
+            if let points = status.points, points > 0 {
+                return "\(profile.service.shortTitle) · \(points) pts"
+            }
         }
         return "\(profile.service.shortTitle) ready"
     }
