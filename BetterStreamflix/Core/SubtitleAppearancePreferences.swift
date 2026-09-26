@@ -8,6 +8,7 @@ enum SubtitleAppearancePreferences {
     static let sizeKey = "player.subtitleAppearance.size"
     static let styleKey = "player.subtitleAppearance.style"
     static let colorKey = "player.subtitleAppearance.color"
+    static let positionKey = "player.subtitleAppearance.position"
     static let didChangeNotification = Notification.Name("player.subtitleAppearance.didChange")
 
     enum Size: String, CaseIterable, Identifiable {
@@ -61,6 +62,7 @@ enum SubtitleAppearancePreferences {
         case yellow
         case cyan
         case softGray
+        case softGreen
 
         var id: String { rawValue }
 
@@ -70,6 +72,7 @@ enum SubtitleAppearancePreferences {
             case .yellow: "Yellow"
             case .cyan: "Cyan"
             case .softGray: "Soft gray"
+            case .softGreen: "Soft green"
             }
         }
 
@@ -80,6 +83,32 @@ enum SubtitleAppearancePreferences {
             case .yellow: [1, 1, 0.92, 0.23]
             case .cyan: [1, 0.45, 0.92, 1]
             case .softGray: [1, 0.88, 0.88, 0.88]
+            case .softGreen: [1, 0.55, 0.92, 0.55]
+            }
+        }
+    }
+
+    enum VerticalPosition: String, CaseIterable, Identifiable {
+        case bottom
+        case raised
+        case high
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .bottom: "Bottom"
+            case .raised: "Raised"
+            case .high: "High"
+            }
+        }
+
+        /// Fraction of the video height from the bottom (Core Media writing direction).
+        var writingDirectionProgress: CGFloat {
+            switch self {
+            case .bottom: 0.08
+            case .raised: 0.16
+            case .high: 0.28
             }
         }
     }
@@ -108,15 +137,26 @@ enum SubtitleAppearancePreferences {
         }
     }
 
+    static var position: VerticalPosition {
+        get { VerticalPosition(rawValue: UserDefaults.standard.string(forKey: positionKey) ?? "") ?? .bottom }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: positionKey)
+            NotificationCenter.default.post(name: didChangeNotification, object: nil)
+        }
+    }
+
     static func textStyleRules(
         size: Size = size,
         style: Style = style,
-        color: ColorOption = color
+        color: ColorOption = color,
+        position: VerticalPosition = position
     ) -> [AVTextStyleRule] {
         var attributes: [String: Any] = [
             kCMTextMarkupAttribute_ForegroundColorARGB as String: color.argb,
             kCMTextMarkupAttribute_RelativeFontSize as String: size.relativeFontSize,
             kCMTextMarkupAttribute_BoldStyle as String: true,
+            kCMTextMarkupAttribute_OrthogonalLinePositionPercentageRelativeToWritingDirection as String:
+                position.writingDirectionProgress * 100,
         ]
 
         switch style {

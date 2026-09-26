@@ -4503,8 +4503,30 @@ struct NativePlayerController: UIViewControllerRepresentable {
             let width = view.bounds.width
             guard height > 0, width > 0 else { return false }
             // Keep bottom transport / top system chrome for AVKit.
+            let topBand = max(height * 0.12, view.safeAreaInsets.top + 56)
             if location.y > height * 0.78 { return true }
-            if location.y < height * 0.12 { return true }
+            if location.y < topBand { return true }
+            // Punch out the ⋯ / timing controls so volume pans never fight the menu.
+            if isTouchInReservedControls(location, in: view) { return true }
+            return false
+        }
+
+        private func isTouchInReservedControls(_ location: CGPoint, in view: UIView) -> Bool {
+            let inset: CGFloat = 16
+            if !settingsButton.isHidden, settingsButton.alpha > 0.05 {
+                let frame = settingsButton.convert(
+                    settingsButton.bounds.insetBy(dx: -inset, dy: -inset),
+                    to: view
+                )
+                if frame.contains(location) { return true }
+            }
+            if !subtitleTimingControl.isHidden, subtitleTimingControl.alpha > 0.05 {
+                let frame = subtitleTimingControl.convert(
+                    subtitleTimingControl.bounds.insetBy(dx: -inset, dy: -inset),
+                    to: view
+                )
+                if frame.contains(location) { return true }
+            }
             return false
         }
 
@@ -4570,7 +4592,15 @@ struct NativePlayerController: UIViewControllerRepresentable {
             guard let view = gestureRecognizer.view else { return true }
             let location = touch.location(in: view)
             if gestureRecognizer === panGestureRecognizer || gestureRecognizer === doubleTapGestureRecognizer {
-                return !isTouchInChromeArea(location, in: view)
+                if isTouchInChromeArea(location, in: view) { return false }
+                var hit: UIView? = touch.view
+                while let current = hit {
+                    if current === settingsButton || current === subtitleTimingControl {
+                        return false
+                    }
+                    hit = current.superview
+                }
+                return true
             }
             if let touched = touch.view, touched is UIControl {
                 return false

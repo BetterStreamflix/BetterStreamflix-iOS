@@ -83,8 +83,13 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
             return []
         }
 
+        // Prefer higher download counts when the API surfaces them.
+        let ordered = rows.sorted {
+            ($0.downloads ?? 0) > ($1.downloads ?? 0)
+        }
+
         var seen = Set<String>()
-        return rows.compactMap { row -> SubtitleSource? in
+        return ordered.compactMap { row -> SubtitleSource? in
             guard let link = row.subDownloadLink.flatMap(URL.init(string:)),
                   ["http", "https"].contains(link.scheme?.lowercased() ?? "") else { return nil }
             let fileID = row.idSubtitleFile ?? row.subHash ?? link.absoluteString
@@ -98,11 +103,21 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
             let detail = [release, fileName]
                 .compactMap { $0 }
                 .first { !$0.isEmpty }
+            let hearingImpaired = (row.subHearingImpaired ?? "").lowercased()
+            let isHI = hearingImpaired == "1"
+                || hearingImpaired == "true"
+                || hearingImpaired.hasPrefix("y")
+            var tags: [String] = []
+            if isHI { tags.append("SDH") }
+            if let downloads = row.downloads, downloads > 0 {
+                tags.append("↓\(Self.compactCount(downloads))")
+            }
+            let tagSuffix = tags.isEmpty ? "" : " · " + tags.joined(separator: " · ")
             let label: String
             if let detail, !detail.isEmpty {
-                label = "\(languageName) · \(detail)"
+                label = "\(languageName) · \(detail)\(tagSuffix)"
             } else {
-                label = languageName
+                label = "\(languageName)\(tagSuffix)"
             }
             return SubtitleSource(
                 id: stableID,
@@ -117,6 +132,12 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
         }
     }
 
+    private static func compactCount(_ value: Int) -> String {
+        if value >= 1_000_000 { return String(format: "%.1fM", Double(value) / 1_000_000) }
+        if value >= 1_000 { return String(format: "%.1fk", Double(value) / 1_000) }
+        return "\(value)"
+    }
+
     private struct Row: Decodable {
         let idSubtitleFile: String?
         let subFileName: String?
@@ -126,6 +147,14 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
         let languageName: String?
         let movieReleaseName: String?
         let subDownloadLink: String?
+        let subHearingImpaired: String?
+        let subDownloads: String?
+        let subRating: String?
+
+        var downloads: Int? {
+            if let subDownloads, let value = Int(subDownloads) { return value }
+            return nil
+        }
 
         enum CodingKeys: String, CodingKey {
             case idSubtitleFile = "IDSubtitleFile"
@@ -136,6 +165,9 @@ struct OpenSubtitlesSubtitleProvider: SubtitleProvider {
             case languageName = "LanguageName"
             case movieReleaseName = "MovieReleaseName"
             case subDownloadLink = "SubDownloadLink"
+            case subHearingImpaired = "SubHearingImpaired"
+            case subDownloads = "SubDownloads"
+            case subRating = "SubRating"
         }
     }
 }

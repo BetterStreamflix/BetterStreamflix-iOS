@@ -20,12 +20,68 @@ enum PlaybackLanguages {
 }
 
 struct SubtitleTrackPickerView: View {
+    enum Filter: String, CaseIterable, Identifiable {
+        case preferred
+        case all
+        case sdh
+        case hideForced
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .preferred: "Preferred"
+            case .all: "All"
+            case .sdh: "SDH"
+            case .hideForced: "No forced"
+            }
+        }
+    }
+
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var session: PlayerSession
     let isSearching: Bool
     let discoveredCount: Int
     let discoveryComplete: Bool
+    var providerStatuses: [SubtitleProviderStatus] = []
+    var externalInjectionSupported: Bool = true
     var onOpenSettingsHint: (() -> Void)? = nil
+
+    @State private var filter: Filter = .preferred
+
+    private var preferredCodes: Set<String> {
+        let prefs = SubtitleRanking.preferredLanguageCodes()
+        return Set([prefs.primary, prefs.secondary].compactMap { $0 })
+    }
+
+    private var filteredEntries: [SubtitlePickerEntry] {
+        let tracks = session.subtitlePickerEntries.filter { $0.kind != .off }
+        let off = session.subtitlePickerEntries.filter { $0.kind == .off }
+        let filtered: [SubtitlePickerEntry]
+        switch filter {
+        case .all:
+            filtered = tracks
+        case .preferred:
+            if preferredCodes.isEmpty {
+                filtered = tracks
+            } else {
+                let preferred = tracks.filter {
+                    guard let code = $0.languageCode else { return false }
+                    return preferredCodes.contains(code)
+                }
+                filtered = preferred.isEmpty ? tracks : preferred
+            }
+        case .sdh:
+            filtered = tracks.filter {
+                $0.subtitle.localizedCaseInsensitiveContains("SDH")
+                    || $0.subtitle.localizedCaseInsensitiveContains("hearing")
+                    || $0.title.localizedCaseInsensitiveContains("SDH")
+            }
+        case .hideForced:
+            filtered = tracks.filter { !$0.subtitle.localizedCaseInsensitiveContains("forced") }
+        }
+        return off + filtered
+    }
 
     var body: some View {
         NavigationStack {
@@ -52,18 +108,48 @@ struct SubtitleTrackPickerView: View {
                         }
                         .padding(.vertical, 4)
                     }
+
+                    if !externalInjectionSupported {
+                        Label(
+                            "This source is progressive MP4 — online catalogs cannot inject into it. Built-in CC still works when the stream includes them.",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Picker("Filter", selection: $filter) {
+                        ForEach(Filter.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                }
+
+                if !providerStatuses.isEmpty {
+                    Section("Catalogs") {
+                        ForEach(providerStatuses) { status in
+                            HStack {
+                                Circle()
+                                    .fill(status.color)
+                                    .frame(width: 8, height: 8)
+                                Text(status.providerName)
+                                Spacer()
+                                Text(status.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 Section("Tracks") {
-                    ForEach(session.subtitlePickerEntries) { entry in
+                    ForEach(filteredEntries) { entry in
                         Button {
                             Task {
                                 await session.selectSubtitlePickerEntry(entry)
-                                if entry.kind == .off || entry.isSelected == false {
-                                    dismiss()
-                                } else {
-                                    dismiss()
-                                }
+                                dismiss()
                             }
                         } label: {
                             HStack(alignment: .top, spacing: 12) {
@@ -81,6 +167,13 @@ struct SubtitleTrackPickerView: View {
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 2)
                                                 .background(Color.accentColor.opacity(0.25), in: Capsule())
+                                        }
+                                        if entry.subtitle.localizedCaseInsensitiveContains("SDH") {
+                                            Text("SDH")
+                                                .font(.caption2.weight(.bold))
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color.secondary.opacity(0.2), in: Capsule())
                                         }
                                     }
                                     if !entry.subtitle.isEmpty {
@@ -120,6 +213,39 @@ struct SubtitleTrackPickerView: View {
             .task {
                 await session.refreshSubtitlePickerEntries()
             }
+        }
+    }
+}
+
+struct SubtitleProviderStatus: Identifiable, Hashable, Sendable {
+    enum State: Hashable, Sendable {
+        case searching
+        case found(Int)
+        case empty
+        case failed(String)
+    }
+
+    let providerID: String
+    let providerName: String
+    let state: State
+
+    var id: String { providerID }
+
+    var detail: String {
+        switch state {
+        case .searching: "Searching…"
+        case .found(let count): count == 1 ? "1 track" : "\(count) tracks"
+        case .empty: "No matches"
+        case .failed(let message): message
+        }
+    }
+
+    var color: Color {
+        switch state {
+        case .searching: .secondary
+        case .found: .green
+        case .empty: .orange
+        case .failed: .red
         }
     }
 }
@@ -1612,6 +1738,10 @@ struct PlayerScreen: View {
                 isSearching: model.isSearching || !model.isSubtitleDiscoveryComplete,
                 discoveredCount: model.thirdPartySubtitles.count,
                 discoveryComplete: model.isSubtitleDiscoveryComplete,
+                providerStatuses: model.subtitleProviderStatuses,
+                externalInjectionSupported: model.source.map {
+                    $0.url.pathExtension.lowercased() != "mp4"
+                } ?? true,
                 onOpenSettingsHint: {
                     showSubtitlePicker = false
                 }

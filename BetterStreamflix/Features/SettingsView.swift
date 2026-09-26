@@ -241,6 +241,24 @@ struct SettingsView: View {
                     }
                     .tint(environment.theme.accent)
 
+                    Picker("Caption position", selection: Binding(
+                        get: { SubtitleAppearancePreferences.position },
+                        set: { SubtitleAppearancePreferences.position = $0 }
+                    )) {
+                        ForEach(SubtitleAppearancePreferences.VerticalPosition.allCases) { position in
+                            Text(position.title).tag(position)
+                        }
+                    }
+                    .tint(environment.theme.accent)
+
+                    Toggle(
+                        "Prefer SDH / hearing-impaired tracks",
+                        isOn: Binding(
+                            get: { SubtitleRanking.prefersHearingImpaired },
+                            set: { SubtitleRanking.prefersHearingImpaired = $0 }
+                        )
+                    )
+
                     Text("Appearance applies to captions in the player (including injected tracks). Open Playback Settings → Browse subtitle tracks while watching.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -462,7 +480,7 @@ struct SettingsView: View {
     private var appVersionLabel: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.1.4"
+        ) as? String ?? "0.1.5"
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "1"

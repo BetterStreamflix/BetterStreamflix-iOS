@@ -118,15 +118,23 @@ enum GermanScrape {
         URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? url.path
     }
 
-    /// Search terms to try, most specific first.
+    /// Search terms to try, most specific first. When a release year is known,
+    /// also try `"Title 2026"` so remakes do not lose to the franchise original.
     static func queries(for context: PlaybackLookupContext, limit: Int = 2) -> [String] {
         var seen: Set<String> = []
         var result: [String] = []
+        let year = expectedYear(context)
         for title in context.titles {
             let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty, seen.insert(GermanTitleMatching.normalizeTitle(cleaned)).inserted else { continue }
             result.append(cleaned)
-            if result.count >= limit { break }
+            if let year {
+                let withYear = "\(cleaned) \(year)"
+                if seen.insert(GermanTitleMatching.normalizeTitle(withYear)).inserted {
+                    result.append(withYear)
+                }
+            }
+            if result.count >= max(limit * 2, 4) { break }
         }
         return result
     }
@@ -139,6 +147,52 @@ enum GermanScrape {
     static func matches(_ title: String, year: Int? = nil, context: PlaybackLookupContext) -> Bool {
         guard GermanTitleMatching.matches(title, titles: context.titles) else { return false }
         return GermanTitleMatching.matchesYear(year, expected: expectedYear(context))
+    }
+
+    /// Ranked page pick: exact year → soft year → never title-only when year is known.
+    static func bestPage(
+        from candidates: [(url: URL, title: String, year: Int?)],
+        context: PlaybackLookupContext,
+        preferSeason: Int? = nil
+    ) -> URL? {
+        let titled = candidates.filter {
+            GermanTitleMatching.matches($0.title, titles: context.titles)
+        }
+        guard !titled.isEmpty else { return nil }
+
+        if let preferSeason {
+            let seasonHits = titled.filter {
+                GermanTitleMatching.seasonNumber(in: $0.title) == preferSeason
+                    && GermanTitleMatching.matchesYear($0.year, expected: expectedYear(context))
+            }
+            if let exact = seasonHits.first(where: {
+                guard let year = $0.year, let expected = expectedYear(context) else { return false }
+                return year == expected
+            }) {
+                return exact.url
+            }
+            if let close = seasonHits.first { return close.url }
+        }
+
+        let expected = expectedYear(context)
+        if let expected {
+            if let exact = titled.first(where: { $0.year == expected }) {
+                return exact.url
+            }
+            if let close = titled.first(where: {
+                guard let year = $0.year else { return false }
+                return abs(year - expected) <= 1
+            }) {
+                return close.url
+            }
+            // Movie remakes must not fall back to a yearless franchise original.
+            // Series search cards often omit year, so allow title-only there.
+            if context.request.media.kind == .series {
+                return titled.first?.url
+            }
+            return nil
+        }
+        return titled.first?.url
     }
 
     /// JSON numbers arrive as `NSNumber`, so ids need coercing before use in a path.
@@ -383,6 +437,8 @@ struct FilmPalastPlaybackProvider: GermanPlaybackProvider {
     }
 
     private func findSlug(for context: PlaybackLookupContext) async throws -> String? {
+        var ranked: [(url: URL, title: String, year: Int?)] = []
+        var seen = Set<String>()
         for query in GermanScrape.queries(for: context) {
             try Task.checkCancellation()
             guard let search = GermanScrape.url(baseURL, "search/title/\(GermanScrape.pathEncoded(query))"),
@@ -393,13 +449,15 @@ struct FilmPalastPlaybackProvider: GermanPlaybackProvider {
                     ?? article.first { $0.tag == "a" && $0["href"].contains("/stream/") }
                 guard let link else { continue }
                 let title = link.text.isEmpty ? link["title"] : link.text
-                let year = GermanTitleMatching.year(in: article.text)
-                guard GermanScrape.matches(title, year: year, context: context) else { continue }
+                let year = GermanTitleMatching.year(in: article.text) ?? GermanTitleMatching.year(in: title)
+                guard GermanTitleMatching.matches(title, titles: context.titles) else { continue }
                 let slug = link["href"].components(separatedBy: "/").last ?? ""
-                if !slug.isEmpty { return slug }
+                guard !slug.isEmpty, seen.insert(slug).inserted,
+                      let placeholder = URL(string: "https://filmpalast.to/\(slug)") else { continue }
+                ranked.append((placeholder, title, year))
             }
         }
-        return nil
+        return GermanScrape.bestPage(from: ranked, context: context)?.lastPathComponent
     }
 
     /// Series pages group episodes per season block; both are ordered, not labelled.
@@ -467,6 +525,8 @@ struct FilmoPlaybackProvider: GermanPlaybackProvider {
     }
 
     private func findMovie(for context: PlaybackLookupContext) async throws -> URL? {
+        var ranked: [(url: URL, title: String, year: Int?)] = []
+        var seen = Set<URL>()
         for query in GermanScrape.queries(for: context) {
             try Task.checkCancellation()
             guard let suggest = GermanScrape.url(baseURL, "search/suggest", query: ["q": query]),
@@ -476,11 +536,16 @@ struct FilmoPlaybackProvider: GermanPlaybackProvider {
                 guard let title = GermanScrape.scalar(movie["title"]),
                       let raw = GermanScrape.scalar(movie["url"]),
                       GermanTitleMatching.matches(title, titles: context.titles),
-                      let url = GermanScrape.url(baseURL, raw) else { continue }
-                return url
+                      let url = GermanScrape.url(baseURL, raw),
+                      seen.insert(url).inserted else { continue }
+                let year = GermanScrape.scalar(movie["year"]).flatMap(Int.init)
+                    ?? GermanScrape.scalar(movie["release_year"]).flatMap(Int.init)
+                    ?? GermanTitleMatching.year(in: GermanScrape.scalar(movie["release_date"]))
+                    ?? GermanTitleMatching.year(in: title)
+                ranked.append((url, title, year))
             }
         }
-        return nil
+        return GermanScrape.bestPage(from: ranked, context: context)
     }
 
     /// `POST /n` exchanges the chip payload for a one-shot token; `/n/{token}`
@@ -707,28 +772,63 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
     private static let base = URL(string: "https://kinoger.fun/")!
 
     func hosters(for context: PlaybackLookupContext) async throws -> [GermanHoster] {
-        guard let page = try await findPage(for: context) else { return [] }
+        guard let page = try await findPage(for: context) else {
+            return await imdbMeinecloudFallback(for: context)
+        }
         let html = try await GermanScrape.client.page(page, referer: baseURL)
+
+        // Reject franchise hijacks when the page exposes a different IMDb id.
+        if let expectedIMDb = context.request.media.imdbID?.lowercased(),
+           let pageIMDb = AnimeHTML.captures(#"(tt\d{7,8})"#, in: html).first?[1].lowercased(),
+           pageIMDb != expectedIMDb {
+            return await imdbMeinecloudFallback(for: context)
+        }
 
         let links: [(url: URL, label: String)]
         if let episode = context.request.episode {
-            links = Self.episodeLinks(in: html, page: page, season: episode.seasonNumber, episode: episode.number)
+            links = Self.episodeLinks(
+                in: html,
+                page: page,
+                season: episode.seasonNumber,
+                episode: episode.number
+            )
         } else {
             links = Self.movieLinks(in: html, page: page)
         }
 
-        let hosters = links.map { link in
+        var hosters = links.map { link in
             GermanHoster(
                 name: MeinecloudEmbedHelper.hosterDisplayName(for: link.url),
                 url: link.url,
                 referer: page
             )
         }
-        return await GermanScrape.expandingWrappers(hosters)
+        // Expand more wrappers than the default — Kinoger often stacks meinecloud → hoster.
+        hosters = await GermanScrape.expandingWrappers(hosters, limit: 8)
+        if !hosters.isEmpty { return hosters }
+        return await imdbMeinecloudFallback(for: context, referer: page)
+    }
+
+    private func imdbMeinecloudFallback(
+        for context: PlaybackLookupContext,
+        referer: URL? = nil
+    ) async -> [GermanHoster] {
+        guard context.request.episode == nil,
+              let imdb = context.request.media.imdbID,
+              imdb.hasPrefix("tt"),
+              let embed = URL(string: "https://meinecloud.click/movie/\(imdb)") else {
+            return []
+        }
+        return await MeinecloudEmbedHelper.expand(embed, referer: referer ?? baseURL).map {
+            GermanHoster(name: $0.name, url: $0.url, referer: embed)
+        }
     }
 
     private func findPage(for context: PlaybackLookupContext) async throws -> URL? {
         let season = context.request.episode?.seasonNumber
+        var ranked: [(url: URL, title: String, year: Int?)] = []
+        var seen = Set<URL>()
+
         for query in GermanScrape.queries(for: context) {
             try Task.checkCancellation()
             guard let search = GermanScrape.url(baseURL, "", query: [
@@ -737,22 +837,21 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
                 "story": query,
             ]), let html = try? await GermanScrape.client.page(search, referer: baseURL) else { continue }
 
-            var fallback: URL?
             for card in AnimeHTML.parse(html).all({ $0.tag == "div" && $0.hasClass("short") }) {
                 let anchor = card.first { $0.hasClass("title") }?.first { $0.tag == "a" && $0["href"].contains(".html") }
                     ?? card.first { $0.tag == "a" && $0["href"].contains(".html") }
                 guard let anchor else { continue }
                 let raw = anchor.text.isEmpty ? anchor["title"] : anchor.text
-                let year = GermanTitleMatching.year(in: raw)
-                guard GermanScrape.matches(Self.cleanTitle(raw), year: year, context: context),
-                      let url = MeinecloudEmbedHelper.normalize(anchor["href"], relativeTo: baseURL) else { continue }
-                // Series are filed one page per season.
-                if let season, GermanTitleMatching.seasonNumber(in: raw) == season { return url }
-                if fallback == nil { fallback = url }
+                let cleaned = Self.cleanTitle(raw)
+                let year = GermanTitleMatching.year(in: raw) ?? GermanTitleMatching.year(in: card.text)
+                guard GermanTitleMatching.matches(cleaned, titles: context.titles),
+                      let url = MeinecloudEmbedHelper.normalize(anchor["href"], relativeTo: baseURL),
+                      seen.insert(url).inserted else { continue }
+                ranked.append((url, cleaned.isEmpty ? raw : cleaned, year))
             }
-            if let fallback { return fallback }
         }
-        return nil
+
+        return GermanScrape.bestPage(from: ranked, context: context, preferSeason: season)
     }
 
     private static func cleanTitle(_ raw: String) -> String {
@@ -774,9 +873,14 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
         episode: Int
     ) -> [(url: URL, label: String)] {
         let tree = AnimeHTML.parse(html)
+        // Prefer the exact season block. Never silently fall back to season 1
+        // when the request is for another season — that mis-binds multi-season shows.
         let entry = tree.first { $0["id"] == "serie-\(season)_\(episode)" }
-            ?? tree.first { $0["id"] == "serie-1_\(episode)" }
-            ?? tree.first { $0["id"].hasPrefix("serie-") && $0["id"].hasSuffix("_\(episode)") }
+            ?? tree.first {
+                season == 1
+                    && $0["id"].hasPrefix("serie-")
+                    && $0["id"].hasSuffix("_\(episode)")
+            }
         guard let entry else { return [] }
         return links(in: entry.all { !$0["data-link"].isEmpty }, page: page)
     }
@@ -787,12 +891,18 @@ struct KinoGerPlaybackProvider: GermanPlaybackProvider {
         for node in nodes {
             // `/vod/vpn` is the site's "use a VPN" interstitial, never a stream.
             let raw = node["data-link"]
-            guard !raw.localizedCaseInsensitiveContains("/vod/vpn"),
-                  let decoded = MeinecloudEmbedHelper.decodeDataLink(raw),
-                  let url = MeinecloudEmbedHelper.normalize(decoded, relativeTo: page),
-                  !(url.hostName ?? "").contains("youtu"),
-                  seen.insert(url).inserted else { continue }
-            result.append((url, node.text))
+            guard !raw.isEmpty, !raw.localizedCaseInsensitiveContains("/vod/vpn") else { continue }
+            let candidates = [
+                MeinecloudEmbedHelper.decodeDataLink(raw),
+                raw.trimmingCharacters(in: .whitespacesAndNewlines),
+            ].compactMap { $0 }
+            for candidate in candidates {
+                guard let url = MeinecloudEmbedHelper.normalize(candidate, relativeTo: page),
+                      !(url.hostName ?? "").contains("youtu"),
+                      seen.insert(url).inserted else { continue }
+                result.append((url, node.text.isEmpty ? MeinecloudEmbedHelper.hosterDisplayName(for: url) : node.text))
+                break
+            }
         }
         return result
     }
@@ -876,18 +986,21 @@ struct MEGAKinoPlaybackProvider: GermanPlaybackProvider {
             if let cookies = session.cookies { request.setValue(cookies, forHTTPHeaderField: "Cookie") }
             guard let response = try? await GermanScrape.client.send(request) else { continue }
 
-            var fallback: URL?
+            var ranked: [(url: URL, title: String, year: Int?)] = []
+            var seen = Set<URL>()
             for card in AnimeHTML.parse(response.text).all({ $0.tag == "a" && $0.hasClass("poster") }) {
                 let href = card["href"]
                 let title = card.first { $0.tag == "h3" && $0.hasClass("poster__title") }?.text ?? ""
                 guard !href.isEmpty, !title.isEmpty, href.contains("/serials/") == wantsSeries,
-                      GermanScrape.matches(Self.showTitle(title), context: context),
-                      let url = MeinecloudEmbedHelper.normalize(href, relativeTo: session.origin) else { continue }
-                // Series live one page per season, labelled "Titel - 2 Staffel".
-                if let season, Self.seasonNumber(in: title) == season { return url }
-                if fallback == nil { fallback = url }
+                      GermanTitleMatching.matches(Self.showTitle(title), titles: context.titles),
+                      let url = MeinecloudEmbedHelper.normalize(href, relativeTo: session.origin),
+                      seen.insert(url).inserted else { continue }
+                let year = GermanTitleMatching.year(in: title) ?? GermanTitleMatching.year(in: card.text)
+                ranked.append((url, Self.showTitle(title), year))
             }
-            if let fallback { return fallback }
+            if let best = GermanScrape.bestPage(from: ranked, context: context, preferSeason: season) {
+                return best
+            }
         }
         return nil
     }
@@ -1036,12 +1149,20 @@ struct SerienStreamPlaybackProvider: GermanPlaybackProvider {
             try Task.checkCancellation()
             guard let search = GermanScrape.url(origin, "suche", query: ["term": query, "page": "1", "tab": "shows"]),
                   let html = try? await GermanScrape.client.page(search, referer: origin) else { continue }
+            var ranked: [(url: URL, title: String, year: Int?)] = []
+            var seen = Set<String>()
             for card in AnimeHTML.parse(html).all({ $0.hasClass("cover-card") }) {
                 guard let anchor = card.first({ $0.tag == "a" && $0["href"].hasPrefix("/serie/") }) else { continue }
                 let title = card.first { $0.tag == "h6" && $0.hasClass("show-title") }?.text ?? ""
+                let year = GermanTitleMatching.year(in: card.text) ?? GermanTitleMatching.year(in: title)
                 guard GermanTitleMatching.matches(title, titles: context.titles) else { continue }
                 let slug = anchor["href"].components(separatedBy: "/").filter { !$0.isEmpty }.last
-                if let slug, !slug.isEmpty { return slug }
+                guard let slug, !slug.isEmpty, seen.insert(slug).inserted,
+                      let placeholder = URL(string: "https://serienstream.to/\(slug)") else { continue }
+                ranked.append((placeholder, title, year))
+            }
+            if let best = GermanScrape.bestPage(from: ranked, context: context) {
+                return best.lastPathComponent
             }
         }
         return nil
@@ -1127,6 +1248,8 @@ struct AniWorldPlaybackProvider: GermanPlaybackProvider {
             guard let response = try? await GermanScrape.client.send(request),
                   let results = try? JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] else { continue }
 
+            var ranked: [(url: URL, title: String, year: Int?)] = []
+            var seen = Set<String>()
             for result in results {
                 guard let link = GermanScrape.scalar(result["link"]),
                       let raw = GermanScrape.scalar(result["title"]) else { continue }
@@ -1136,9 +1259,16 @@ struct AniWorldPlaybackProvider: GermanPlaybackProvider {
                 let title = HTMLPayloadParser.decodeEntities(
                     raw.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
                 )
+                let year = GermanScrape.scalar(result["year"]).flatMap(Int.init)
+                    ?? GermanTitleMatching.year(in: title)
                 guard !slug.isEmpty, link.contains("/anime/stream/"),
-                      GermanTitleMatching.matches(title, titles: context.titles) else { continue }
-                return slug
+                      GermanTitleMatching.matches(title, titles: context.titles),
+                      seen.insert(slug).inserted,
+                      let placeholder = URL(string: "https://aniworld.to/\(slug)") else { continue }
+                ranked.append((placeholder, title, year))
+            }
+            if let best = GermanScrape.bestPage(from: ranked, context: context) {
+                return best.lastPathComponent
             }
         }
         return nil

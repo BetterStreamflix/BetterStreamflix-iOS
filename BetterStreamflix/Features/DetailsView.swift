@@ -339,8 +339,8 @@ struct DetailsView: View {
         // Flush under the status bar / Dynamic Island: overlay ignores top safe
         // area, then pads a slim control row by the real inset only once.
         let topInset = ScreenMetrics.topSafeAreaInset
-        let rowHeight: CGFloat = 36
-        let leading: CGFloat = 10
+        let rowHeight: CGFloat = 40
+        let leading: CGFloat = 12
 
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -348,7 +348,7 @@ struct DetailsView: View {
                 if showsCompactHeader {
                     Spacer(minLength: 8)
                     compactHeaderTitle
-                        .frame(maxWidth: 220)
+                        .frame(maxWidth: 240)
                     Spacer(minLength: 8)
                     Color.clear
                         .frame(width: DetailBackControl.size, height: DetailBackControl.size)
@@ -390,11 +390,11 @@ struct DetailsView: View {
             title: model.item.title,
             logoData: tmdbTitleLogoData,
             showsFallback: isTitleLogoResolved,
-            maximumLogoWidth: 168,
-            maximumLogoHeight: 20
+            maximumLogoWidth: 196,
+            maximumLogoHeight: 26
         ) {
             Text(model.item.title)
-                .font(.caption.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.95))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -775,14 +775,14 @@ private struct DetailsHeroScrollOffsetKey: PreferenceKey {
 }
 
 struct DetailBackControl: View {
-    static let size: CGFloat = 32
+    static let size: CGFloat = 36
 
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: Self.size, height: Self.size)
                 .contentShape(Circle())

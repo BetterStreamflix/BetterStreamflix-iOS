@@ -172,6 +172,23 @@ struct SubtitleProviderResult: Sendable {
     let subtitles: [SubtitleSource]
     let duration: Duration
     let usedCorrectedIMDbID: Bool
+    let errorMessage: String?
+
+    init(
+        providerID: String,
+        providerName: String,
+        subtitles: [SubtitleSource],
+        duration: Duration,
+        usedCorrectedIMDbID: Bool,
+        errorMessage: String? = nil
+    ) {
+        self.providerID = providerID
+        self.providerName = providerName
+        self.subtitles = subtitles
+        self.duration = duration
+        self.usedCorrectedIMDbID = usedCorrectedIMDbID
+        self.errorMessage = errorMessage
+    }
 }
 
 actor SubtitleProviderRegistry {
@@ -310,7 +327,8 @@ actor SubtitleProviderRegistry {
                             providerName: provider.displayName,
                             subtitles: [],
                             duration: duration,
-                            usedCorrectedIMDbID: corrected
+                            usedCorrectedIMDbID: corrected,
+                            errorMessage: error.isCancellation ? nil : "Unavailable"
                         )
                     }
                 }

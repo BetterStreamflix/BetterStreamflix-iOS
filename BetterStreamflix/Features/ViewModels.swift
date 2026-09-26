@@ -483,6 +483,7 @@ final class PlayerViewModel: ObservableObject {
         let thirdPartySubtitles: [SubtitleSource]
         let subtitleRevision: Int
         let isSubtitleDiscoveryComplete: Bool
+        let subtitleProviderStatuses: [SubtitleProviderStatus]
         let sourceRevision: Int
         let errorMessage: String?
     }
@@ -494,6 +495,7 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var thirdPartySubtitles: [SubtitleSource] = []
     @Published private(set) var subtitleRevision = 0
     @Published private(set) var isSubtitleDiscoveryComplete = false
+    @Published private(set) var subtitleProviderStatuses: [SubtitleProviderStatus] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isSwitching = false
     @Published private(set) var isSearching = false
@@ -615,6 +617,7 @@ final class PlayerViewModel: ObservableObject {
             thirdPartySubtitles: thirdPartySubtitles,
             subtitleRevision: subtitleRevision,
             isSubtitleDiscoveryComplete: isSubtitleDiscoveryComplete,
+            subtitleProviderStatuses: subtitleProviderStatuses,
             sourceRevision: sourceRevision,
             errorMessage: errorMessage
         )
@@ -624,6 +627,7 @@ final class PlayerViewModel: ObservableObject {
         streams = []
         selectedSourceID = nil
         thirdPartySubtitles = []
+        subtitleProviderStatuses = []
         subtitleRevision &+= 1
         await load(environment: environment, enabledSubtitleProviderIDs: enabledSubtitleProviderIDs,
                    audioLanguage: audioLanguage, backupAudioLanguage: backupAudioLanguage, qualityHeight: qualityHeight)
@@ -647,6 +651,7 @@ final class PlayerViewModel: ObservableObject {
         thirdPartySubtitles = snapshot.thirdPartySubtitles
         subtitleRevision = snapshot.subtitleRevision
         isSubtitleDiscoveryComplete = snapshot.isSubtitleDiscoveryComplete
+        subtitleProviderStatuses = snapshot.subtitleProviderStatuses
         errorMessage = snapshot.errorMessage
         if publishedPendingSource {
             sourceRevision = snapshot.sourceRevision
@@ -814,12 +819,20 @@ final class PlayerViewModel: ObservableObject {
         subtitleDiscoveryTask?.cancel()
         subtitleDiscoveryWorkerTask?.cancel()
         thirdPartySubtitles = []
+        subtitleProviderStatuses = enabledProviderIDs.sorted().map { id in
+            SubtitleProviderStatus(
+                providerID: id,
+                providerName: Self.displayName(forSubtitleProvider: id),
+                state: .searching
+            )
+        }
         isSubtitleDiscoveryComplete = false
         subtitleRevision &+= 1
         let generation = UUID()
         subtitleDiscoveryGeneration = generation
 
         guard let lookup = playbackRequest.subtitleLookupRequest else {
+            subtitleProviderStatuses = []
             isSubtitleDiscoveryComplete = true
             return
         }
@@ -885,12 +898,47 @@ final class PlayerViewModel: ObservableObject {
     ) {
         guard operation == operationToken,
               subtitleDiscoveryGeneration == generation else { return }
+        let state: SubtitleProviderStatus.State
+        if let errorMessage = event.errorMessage, event.subtitles.isEmpty {
+            state = .failed(errorMessage)
+        } else if event.subtitles.isEmpty {
+            state = .empty
+        } else {
+            state = .found(event.subtitles.count)
+        }
+        if let index = subtitleProviderStatuses.firstIndex(where: { $0.providerID == event.providerID }) {
+            subtitleProviderStatuses[index] = SubtitleProviderStatus(
+                providerID: event.providerID,
+                providerName: event.providerName,
+                state: state
+            )
+        } else {
+            subtitleProviderStatuses.append(
+                SubtitleProviderStatus(
+                    providerID: event.providerID,
+                    providerName: event.providerName,
+                    state: state
+                )
+            )
+        }
+
         var seen = Set(thirdPartySubtitles.map(\.syncKey))
         let additions = event.subtitles.filter { seen.insert($0.syncKey).inserted }
         guard !additions.isEmpty else { return }
         thirdPartySubtitles.append(contentsOf: additions)
         thirdPartySubtitles = SubtitleRanking.sort(thirdPartySubtitles)
         subtitleRevision &+= 1
+    }
+
+    private static func displayName(forSubtitleProvider id: String) -> String {
+        switch id {
+        case "subdl": "SubDL"
+        case "opensubtitles": "OpenSubtitles"
+        case "wizdom": "Wizdom"
+        case "ktuvit": "Ktuvit"
+        case "external-stream-subtitles": "Stremio / External"
+        default: id
+        }
     }
 
     func cancel() {

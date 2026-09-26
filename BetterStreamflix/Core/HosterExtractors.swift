@@ -240,7 +240,10 @@ enum GermanTitleMatching {
     }
 
     static func matchesYear(_ candidate: Int?, expected: Int?, tolerance: Int = 1) -> Bool {
-        guard let candidate, let expected else { return true }
+        // When the catalog knows the release year, never accept a yearless hit —
+        // that is how franchise remakes hijack the 2000s original (e.g. Resident Evil).
+        guard let expected else { return true }
+        guard let candidate else { return false }
         return abs(candidate - expected) <= tolerance
     }
 

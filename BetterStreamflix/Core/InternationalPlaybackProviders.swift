@@ -343,20 +343,30 @@ enum TitleMatch {
         let variants = [normalize(candidate), stripped(candidate)].filter { !$0.isEmpty }
         guard variants.contains(where: { wanted.contains($0) }) else { return false }
         guard let expected = expectedYear(context) else { return !requireYear }
-        guard let candidateYear else { return !requireYear }
+        // When TMDB/IMDb carries a release year, yearless search hits are rejected
+        // so franchise remakes cannot steal the original entry.
+        guard let candidateYear else { return false }
         // Sites list the local release year, which slips a year against TMDB.
         return abs(candidateYear - expected) <= yearTolerance
     }
 
-    /// Search queries to try, most specific first.
+    /// Search queries to try, most specific first. Appends the release year so
+    /// remakes do not lose to the franchise original in first-hit scrapers.
     static func queries(for context: PlaybackLookupContext, limit: Int = 2) -> [String] {
         var seen: Set<String> = []
         var result: [String] = []
+        let year = expectedYear(context)
         for title in context.titles {
             let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty, seen.insert(normalize(cleaned)).inserted else { continue }
             result.append(cleaned)
-            if result.count >= limit { break }
+            if let year {
+                let withYear = "\(cleaned) \(year)"
+                if seen.insert(normalize(withYear)).inserted {
+                    result.append(withYear)
+                }
+            }
+            if result.count >= max(limit * 2, 4) { break }
         }
         return result
     }
@@ -379,6 +389,7 @@ struct ScrapedResult: Sendable {
 
 extension Array where Element == ScrapedResult {
     /// The row that matches the requested title, preferring an exact year match.
+    /// Never falls back to title-only when the catalog knows a release year.
     func bestMatch(for context: PlaybackLookupContext) -> ScrapedResult? {
         let kind = context.request.media.kind
         let typed = filter { $0.kind == nil || $0.kind == kind }
@@ -386,8 +397,12 @@ extension Array where Element == ScrapedResult {
             TitleMatch.matches($0.title, year: $0.year, context: context, yearTolerance: 0, requireYear: true)
         }) { return exact }
         if let close = typed.first(where: {
-            TitleMatch.matches($0.title, year: $0.year, context: context)
+            TitleMatch.matches($0.title, year: $0.year, context: context, requireYear: true)
         }) { return close }
+        // Title-only only when TMDB/IMDb has no year, or for series cards that omit year.
+        if TitleMatch.expectedYear(context) != nil, context.request.media.kind != .series {
+            return nil
+        }
         return typed.first { TitleMatch.matches($0.title, context: context) }
     }
 }
