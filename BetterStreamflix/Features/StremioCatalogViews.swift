@@ -32,18 +32,32 @@ struct StremioCatalogHubView: View {
                     .padding(.horizontal, 20)
 
                 if !recentItems.isEmpty {
-                    MediaShelfView(
-                        title: "Recently played via Stremio",
-                        items: recentItems,
-                        progress: recentProgress,
-                        onDetails: { selectedItem = $0 },
-                        onResume: { progress in
-                            resumePlayback = PlaybackRequest(
-                                media: progress.media,
-                                episode: progress.episode
-                            )
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Recently played via Stremio")
+                                .font(DesignTokens.Typography.shelfTitle)
+                            Spacer()
+                            Button("Clear") {
+                                StremioRecentPlaybackStore.clear()
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(environment.theme.accentBright)
                         }
-                    )
+                        .padding(.horizontal, 20)
+
+                        MediaShelfView(
+                            title: "Recently played",
+                            items: recentItems,
+                            progress: recentProgress,
+                            onDetails: { selectedItem = $0 },
+                            onResume: { progress in
+                                resumePlayback = PlaybackRequest(
+                                    media: progress.media,
+                                    episode: progress.episode
+                                )
+                            }
+                        )
+                    }
                 }
 
                 searchCard

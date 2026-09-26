@@ -137,6 +137,20 @@ struct StremioDebridSettingsView: View {
                 }
                 .disabled(!debrid.hasAnyToken || isRebinding)
 
+                Button {
+                    Task {
+                        for service in StremioDebridService.allCases where debrid.profiles.contains(where: { $0.service == service && $0.isConfigured }) {
+                            validatingService = service
+                            _ = await debrid.validate(service: service)
+                        }
+                        validatingService = nil
+                        banner = "Validated saved Debrid tokens"
+                    }
+                } label: {
+                    Label("Validate all tokens", systemImage: "checkmark.shield")
+                }
+                .disabled(!debrid.hasAnyToken || validatingService != nil)
+
                 Toggle("Prefer cached debrid links", isOn: Binding(
                     get: { debrid.preferCachedDebridLinks },
                     set: { debrid.preferCachedDebridLinks = $0 }

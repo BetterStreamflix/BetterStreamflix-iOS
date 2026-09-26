@@ -62,6 +62,7 @@ enum StremioMetaEnricher {
             tmdbID: item.tmdbID ?? enriched.tmdbID,
             posterURL: item.posterURL ?? enriched.posterURL,
             backdropURL: item.backdropURL ?? enriched.backdropURL,
+            posterShape: item.posterShape ?? enriched.posterShape,
             genres: item.genres.isEmpty ? enriched.genres : item.genres,
             cast: item.cast.isEmpty ? enriched.cast : item.cast,
             seasons: item.seasons.isEmpty ? enriched.seasons : item.seasons

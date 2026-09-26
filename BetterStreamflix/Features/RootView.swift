@@ -26,6 +26,7 @@ struct RootView: View {
     @State private var pendingAutomaticUpdate: AppUpdateInfo?
     @State private var automaticUpdateRelease: AppUpdateInfo?
     @State private var pendingStremioInstallURL: String?
+    @State private var shortcutResumePlayback: PlaybackRequest?
     @AppStorage("updates.skippedReleaseTag") private var skippedUpdateTag = ""
 
     var body: some View {
@@ -84,18 +85,29 @@ struct RootView: View {
             pendingAutomaticUpdate = nil
             automaticUpdateRelease = release
         }
-        .onAppear {
-            if pendingStremioInstallURL == nil,
-               let pending = StremioInstallDeepLink.peekPending() {
-                pendingStremioInstallURL = pending
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: StremioInstallDeepLink.didReceiveNotification)) { note in
             if let raw = note.object as? String {
                 pendingStremioInstallURL = raw
             } else if let pending = StremioInstallDeepLink.peekPending() {
                 pendingStremioInstallURL = pending
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: StremioShortcutBridge.didReceiveNotification)) { note in
+            handleShortcut(routeRaw: note.object as? String)
+        }
+        .onAppear {
+            if pendingStremioInstallURL == nil,
+               let pending = StremioInstallDeepLink.peekPending() {
+                pendingStremioInstallURL = pending
+            }
+            if let pending = StremioShortcutBridge.consumePending() {
+                handleShortcut(routeRaw: pending.rawValue)
+            }
+        }
+        .fullScreenCover(item: $shortcutResumePlayback) { request in
+            PlayerScreen(request: request, nextRequest: nil)
+                .environmentObject(environment)
+                .environmentObject(environment.library)
         }
         .sheet(item: $automaticUpdateRelease) { info in
             UpdateCheckSheet(
@@ -195,6 +207,29 @@ struct RootView: View {
         guard !isHomeReady else { return }
         withAnimation(reduceMotion ? nil : DesignTokens.Motion.entrance) {
             isHomeReady = true
+        }
+    }
+
+    private func handleShortcut(routeRaw: String?) {
+        guard let raw = routeRaw,
+              let route = StremioShortcutBridge.Route(rawValue: raw) else { return }
+        switch route {
+        case .resume:
+            if let progress = environment.library.continueWatching.first {
+                shortcutResumePlayback = PlaybackRequest(
+                    media: progress.media,
+                    episode: progress.episode
+                )
+            } else {
+                selectedTab = .library
+            }
+        case .hub, .debrid, .addons:
+            selectedTab = .more
+            UserDefaults.standard.set(raw, forKey: "stremio.shortcut.moreRoute.v1")
+            NotificationCenter.default.post(
+                name: Notification.Name("stremio.shortcut.moreRoute"),
+                object: raw
+            )
         }
     }
 

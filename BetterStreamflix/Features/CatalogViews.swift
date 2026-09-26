@@ -161,13 +161,25 @@ struct PosterCard: View {
     var progress: Double?
     var progressDetail: String?
 
+    private var posterHeight: CGFloat {
+        let width = MediaArtworkLayout.shelfPosterWidth
+        switch item.posterShape?.lowercased() {
+        case "landscape":
+            return width * 9 / 16
+        case "square":
+            return width
+        default:
+            return width * 1.5
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             ZStack(alignment: .bottom) {
                 CanonicalPosterArtwork(item: item)
                 .frame(
                     width: MediaArtworkLayout.shelfPosterWidth,
-                    height: MediaArtworkLayout.shelfPosterWidth * 1.5
+                    height: posterHeight
                 )
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10))

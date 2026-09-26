@@ -230,10 +230,34 @@ struct MoreView: View {
             }
             .onAppear {
                 playbackLanguage = AppSetupStore.activePlaybackLanguageGroup
+                consumeShortcutRoute()
             }
             .onReceive(NotificationCenter.default.publisher(for: AppSetupStore.languageDidChangeNotification)) { _ in
                 playbackLanguage = AppSetupStore.activePlaybackLanguageGroup
             }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("stremio.shortcut.moreRoute"))) { note in
+                applyShortcutRoute(note.object as? String)
+            }
+        }
+    }
+
+    private func consumeShortcutRoute() {
+        let raw = UserDefaults.standard.string(forKey: "stremio.shortcut.moreRoute.v1")
+        UserDefaults.standard.removeObject(forKey: "stremio.shortcut.moreRoute.v1")
+        applyShortcutRoute(raw)
+    }
+
+    private func applyShortcutRoute(_ raw: String?) {
+        guard let raw, let route = StremioShortcutBridge.Route(rawValue: raw) else { return }
+        switch route {
+        case .hub:
+            path.append(MoreRoute.stremioHub)
+        case .debrid:
+            path.append(MoreRoute.stremioDebrid)
+        case .addons:
+            path.append(MoreRoute.stremioSettings)
+        case .resume:
+            break
         }
     }
 

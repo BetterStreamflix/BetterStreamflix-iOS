@@ -202,6 +202,7 @@ struct StremioMetaPreview: Decodable, Hashable, Sendable, Identifiable {
             tmdbID: tmdb,
             posterURL: URL(string: poster ?? ""),
             backdropURL: URL(string: background ?? ""),
+            posterShape: posterShape,
             genres: (genres ?? []).enumerated().map { index, name in
                 MediaGenre(id: "\(id)-genre-\(index)", name: name)
             }
@@ -291,6 +292,7 @@ struct StremioMetaDetail: Decodable, Hashable, Sendable {
             tmdbID: base.tmdbID ?? moviedbID,
             posterURL: base.posterURL,
             backdropURL: base.backdropURL,
+            posterShape: base.posterShape,
             genres: base.genres,
             cast: castMembers,
             seasons: seasons

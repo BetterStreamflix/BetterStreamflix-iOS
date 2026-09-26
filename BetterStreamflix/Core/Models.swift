@@ -20,6 +20,8 @@ struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     let tmdbID: Int?
     let posterURL: URL?
     let backdropURL: URL?
+    /// Stremio catalog poster shape: `poster`, `landscape`, or `square`.
+    let posterShape: String?
     let genres: [MediaGenre]
     let cast: [CastMember]
     let seasons: [MediaSeason]
@@ -39,6 +41,7 @@ struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         tmdbID: Int? = nil,
         posterURL: URL? = nil,
         backdropURL: URL? = nil,
+        posterShape: String? = nil,
         genres: [MediaGenre] = [],
         cast: [CastMember] = [],
         seasons: [MediaSeason] = []
@@ -57,6 +60,7 @@ struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         self.tmdbID = tmdbID
         self.posterURL = posterURL
         self.backdropURL = backdropURL
+        self.posterShape = posterShape
         self.genres = genres
         self.cast = cast
         self.seasons = seasons
@@ -91,6 +95,7 @@ extension MediaItem {
             tmdbID: metadata.id,
             posterURL: metadata.posterURL ?? posterURL,
             backdropURL: metadata.backdropURL ?? backdropURL,
+            posterShape: posterShape,
             genres: metadata.genreNames.enumerated().map { index, name in
                 MediaGenre(id: "tmdb-\(metadata.id)-genre-\(index)", name: name)
             },

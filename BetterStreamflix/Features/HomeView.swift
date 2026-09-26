@@ -81,6 +81,13 @@ struct HomeView: View {
                     MediaShelfView(title: shelf.title, items: shelf.items, onDetails: openDetails)
                 }
                 StremioHomeShelvesView(onDetails: { openDetails($0) })
+                ForEach(library.customLists.filter { !$0.items.isEmpty }.prefix(3)) { list in
+                    MediaShelfView(
+                        title: list.name,
+                        items: list.items,
+                        onDetails: openDetails
+                    )
+                }
             }
             .padding(.bottom)
         }
